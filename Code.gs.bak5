@@ -1,0 +1,1015 @@
+/**
+ * ============================================================================
+ * JP FITNESS CONTROL - BACKEND GOOGLE APPS SCRIPT
+ * Sistema de Recomposición Corporal & Sobrecarga Progresiva
+ * Atleta: Juan Lizama (JP) | Cuenta: gmusicestudio@gmail.com
+ * ============================================================================
+ */
+
+// Nombres de hojas estandarizados
+const SHEETS = {
+  CONFIG: 'CONFIG',
+  REGISTRO_DIARIO: 'REGISTRO_DIARIO',
+  ALIMENTOS: 'ALIMENTOS',
+  COMIDAS: 'COMIDAS',
+  EJERCICIOS: 'EJERCICIOS',
+  RUTINAS_BASE: 'RUTINAS_BASE',
+  ENTRENAMIENTOS: 'ENTRENAMIENTOS',
+  MEDIDAS: 'MEDIDAS',
+  PROGRESO_SEMANAL: 'PROGRESO_SEMANAL'
+};
+
+/**
+ * Servir la aplicación Web
+ */
+function doGet(e) {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('JP Fitness Control')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Función de inicialización automática de la Hoja de Cálculo
+ * Crea las 9 hojas, encabezados formateados y datos semilla iniciales.
+ */
+function setupSheets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. CONFIG
+  let sheetConfig = getOrCreateSheet(ss, SHEETS.CONFIG);
+  if (sheetConfig.getLastRow() === 0) {
+    const headers = ['clave', 'valor', 'descripcion', 'actualizado_en'];
+    sheetConfig.appendRow(headers);
+    formatHeaderRow(sheetConfig);
+    
+    const configData = [
+      ['usuario_nombre', 'Juan Lizama (JP)', 'Nombre del atleta', new Date()],
+      ['usuario_email', 'gmusicestudio@gmail.com', 'Correo principal', new Date()],
+      ['usuario_edad', 42, 'Edad real confirmada', new Date()],
+      ['estatura_cm', 168.5, 'Estatura (cm)', new Date()],
+      ['peso_inicio', 102.0, 'Peso al iniciar el programa (kg)', new Date()],
+      ['peso_meta', 80.0, 'Peso objetivo principal (kg)', new Date()],
+      ['calorias_meta', 2150, 'Calorías diarias objetivo base (kcal)', new Date()],
+      ['proteina_meta', 153, 'Proteína diaria objetivo (g)', new Date()],
+      ['carbos_meta', 238, 'Carbohidratos diarios base (g)', new Date()],
+      ['grasas_meta', 65, 'Grasas diarias base (g)', new Date()],
+      ['agua_meta', 3.0, 'Consumo de agua diario objetivo (Litros)', new Date()],
+      ['pasos_meta', 10000, 'Pasos diarios mínimos', new Date()],
+      ['rir_objetivo_base', '2 a 3', 'Repeticiones en reserva para cuidar pulso', new Date()],
+      ['fecha_inicio', Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'Fecha de inicio del ciclo', new Date()],
+      ['version_app', '1.1.0', 'Versión de JP Fitness Control', new Date()]
+    ];
+    sheetConfig.getRange(2, 1, configData.length, configData[0].length).setValues(configData);
+    sheetConfig.autoResizeColumns(1, 4);
+  }
+
+  // 2. REGISTRO_DIARIO
+  let sheetRD = getOrCreateSheet(ss, SHEETS.REGISTRO_DIARIO);
+  if (sheetRD.getLastRow() === 0) {
+    const headers = [
+      'id_registro', 'fecha', 'peso_kg', 'horas_sueno', 'calidad_sueno',
+      'presion_sistolica', 'presion_diastolica', 'pasos', 'agua_litros',
+      'energia_nivel', 'estres_nivel', 'adherencia_dieta', 'notas', 'creado_en'
+    ];
+    sheetRD.appendRow(headers);
+    formatHeaderRow(sheetRD);
+    // Semilla inicial día 1
+    const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    sheetRD.appendRow([
+      'RD-' + hoyStr.replace(/-/g, ''), hoyStr, 102.0, 7.5, 4,
+      120, 80, 10000, 3.0, 4, 2, '100%', 'Punto de partida oficial. Comenzamos el viaje a 80 kg.', new Date()
+    ]);
+    sheetRD.autoResizeColumns(1, headers.length);
+  }
+
+  // 3. ALIMENTOS
+  let sheetAlim = getOrCreateSheet(ss, SHEETS.ALIMENTOS);
+  if (sheetAlim.getLastRow() === 0) {
+    const headers = [
+      'id_alimento', 'nombre', 'categoria', 'porcion_base', 'unidad_medida',
+      'calorias', 'proteina_g', 'carbos_g', 'grasas_g', 'favorito', 'activo'
+    ];
+    sheetAlim.appendRow(headers);
+    formatHeaderRow(sheetAlim);
+    
+    const alimentosData = [
+      ['ALI-001', 'Pechuga de pollo a la plancha', 'Proteína', 100, 'g', 165, 31.0, 0.0, 3.6, true, true],
+      ['ALI-002', 'Huevo entero cocido/plancha', 'Proteína', 1, 'unidad', 75, 6.5, 0.5, 5.0, true, true],
+      ['ALI-003', 'Clara de huevo', 'Proteína', 100, 'g', 52, 11.0, 0.7, 0.2, false, true],
+      ['ALI-004', 'Proteína Whey (1 scoop)', 'Suplemento', 30, 'g', 120, 24.0, 2.0, 1.5, true, true],
+      ['ALI-005', 'Atún al agua enlatado', 'Proteína', 100, 'g', 115, 26.0, 0.0, 1.0, true, true],
+      ['ALI-006', 'Carne molida magra 4%', 'Proteína', 100, 'g', 145, 22.0, 0.0, 6.0, false, true],
+      ['ALI-007', 'Arroz blanco cocido', 'Carbohidrato', 100, 'g', 130, 2.7, 28.0, 0.3, true, true],
+      ['ALI-008', 'Avena tradicional', 'Carbohidrato', 50, 'g', 190, 7.0, 33.0, 3.5, true, true],
+      ['ALI-009', 'Plátano / Banana', 'Fruta/Verdura', 1, 'unidad', 105, 1.3, 27.0, 0.3, true, true],
+      ['ALI-010', 'Manzana mediana', 'Fruta/Verdura', 1, 'unidad', 80, 0.4, 21.0, 0.3, false, true],
+      ['ALI-011', 'Palta / Aguacate', 'Grasa', 50, 'g', 80, 1.0, 4.0, 7.5, true, true],
+      ['ALI-012', 'Aceite de oliva extra virgen', 'Grasa', 10, 'ml', 88, 0.0, 0.0, 10.0, true, true],
+      ['ALI-013', 'Pan integral', 'Carbohidrato', 2, 'rebanadas', 140, 6.0, 24.0, 2.0, true, true],
+      ['ALI-014', 'Yogurt griego natural sin azúcar', 'Lácteo', 150, 'g', 90, 15.0, 5.0, 1.0, true, true],
+      ['ALI-015', 'Frutos secos mixtos (almendras/nueces)', 'Grasa', 30, 'g', 180, 5.0, 6.0, 15.0, false, true],
+      ['ALI-016', 'Papas al horno / cocidas', 'Carbohidrato', 150, 'g', 130, 3.0, 30.0, 0.2, false, true]
+    ];
+    sheetAlim.getRange(2, 1, alimentosData.length, alimentosData[0].length).setValues(alimentosData);
+    sheetAlim.autoResizeColumns(1, headers.length);
+  }
+
+  // 4. COMIDAS
+  let sheetCom = getOrCreateSheet(ss, SHEETS.COMIDAS);
+  if (sheetCom.getLastRow() === 0) {
+    const headers = [
+      'id_comida_item', 'fecha', 'tipo_comida', 'id_alimento', 'nombre_alimento',
+      'cantidad', 'unidad', 'calorias_calc', 'proteina_calc_g', 'carbos_calc_g',
+      'grasas_calc_g', 'hora_registro'
+    ];
+    sheetCom.appendRow(headers);
+    formatHeaderRow(sheetCom);
+    sheetCom.autoResizeColumns(1, headers.length);
+  }
+
+  // 5. EJERCICIOS
+  let sheetEj = getOrCreateSheet(ss, SHEETS.EJERCICIOS);
+  if (sheetEj.getLastRow() === 0) {
+    const headers = [
+      'id_ejercicio', 'nombre', 'grupo_muscular', 'tipo_carga',
+      'video_url', 'notas_tecnica', 'activo'
+    ];
+    sheetEj.appendRow(headers);
+    formatHeaderRow(sheetEj);
+
+    const ejerciciosData = [
+      ['EJ-001', 'Press Plano con Mancuernas', 'Pecho', 'Mancuerna (cada una)', '', 'Escápulas retraídas, codos a 45-60 grados, pausa abajo', true],
+      ['EJ-002', 'Press Inclinado con Mancuernas', 'Pecho', 'Mancuerna (cada una)', '', 'Inclinación de 30°, foco en haz clavicular', true],
+      ['EJ-003', 'Aperturas / Cruces en Polea', 'Pecho', 'Polea/Placas', '', 'Contracción isométrica 1 seg al centro', true],
+      ['EJ-004', 'Jalón al Pecho en Polea', 'Espalda', 'Polea/Placas', '', 'Pecho erguido, tirar con los codos hacia la cadera', true],
+      ['EJ-005', 'Remo con Mancuerna a 1 Brazo', 'Espalda', 'Mancuerna (cada una)', '', 'Espalda neutra, llevar codo al bolsillo', true],
+      ['EJ-006', 'Remo en Polea Baja sentado', 'Espalda', 'Polea/Placas', '', 'Extensión completa sin redondear lumbares', true],
+      ['EJ-007', 'Sentadilla Copa / Goblet Squat', 'Cuádriceps', 'Mancuerna (cada una)', '', 'Pies al ancho de hombros, bajar profundo controlado', true],
+      ['EJ-008', 'Prensa de Piernas Inclinada', 'Cuádriceps', 'Máquina guiada', '', 'Pies neutros, no despegar glúteo del respaldo', true],
+      ['EJ-009', 'Curl Femoral Tumbado/Sentado', 'Isquios/Glúteo', 'Máquina guiada', '', 'Control excéntrico en 3 segundos', true],
+      ['EJ-010', 'Elevaciones Laterales Mancuernas', 'Hombro', 'Mancuerna (cada una)', '', 'Leve inclinación adelante, subir en plano escapular', true],
+      ['EJ-011', 'Press Militar con Mancuernas', 'Hombro', 'Mancuerna (cada una)', '', 'No hiperextender espalda baja, rango completo', true],
+      ['EJ-012', 'Curl de Bíceps con Mancuernas', 'Bíceps', 'Mancuerna (cada una)', '', 'Supinación al final del recorrido', true],
+      ['EJ-013', 'Extensión de Tríceps en Polea (Cuerda)', 'Tríceps', 'Polea/Placas', '', 'Codos pegados al torso, abrir cuerda al final', true],
+      ['EJ-014', 'Fondos en Paralelas / Máquina Asistida', 'Pecho/Tríceps', 'Peso corporal', '', 'Inclinación al frente para pecho', true],
+      ['EJ-015', 'Plancha Abdominal / Core', 'Core', 'Peso corporal', '', 'Glúteos y abdomen apretados, respiración controlada', true],
+      ['EJ-016', 'Caminata Activa (Pasos/Cardio)', 'Cardio', 'Peso corporal', '', 'Ritmo constante 100-120 pasos/min', true],
+      ['EJ-017', 'Crunch en Polea (Abdomen)', 'Core', 'Polea/Placas', '', 'Redondea el tronco, exhala al contraer', true],
+      ['EJ-018', 'Elevación de Piernas Colgado/Banco', 'Core', 'Peso corporal', '', 'Sin balanceo, controla la bajada', true],
+      ['EJ-019', 'Curl Martillo', 'Bíceps', 'Mancuerna (cada una)', '', 'Codos pegados al torso', true],
+      ['EJ-020', 'Face Pull / Pájaros (Deltoide Posterior)', 'Hombro', 'Polea/Placas', '', 'Codos altos, aprieta escápulas', true],
+      ['EJ-021', 'Peso Muerto Rumano con Mancuernas', 'Isquios/Glúteo', 'Mancuerna (cada una)', '', 'Espalda neutra, cadera atrás', true],
+      ['EJ-022', 'Elevación de Talones', 'Pantorrillas', 'Máquina guiada', '', 'Pausa arriba 1 seg', true],
+      ['EJ-023', 'Press de Hombro en Máquina', 'Hombro', 'Máquina guiada', '', 'Sin arquear la espalda baja', true],
+      ['EJ-024', 'Press Francés / Tríceps sobre la Cabeza', 'Tríceps', 'Mancuerna (cada una)', '', 'Codos fijos, baja controlado', true]
+    ];
+    sheetEj.getRange(2, 1, ejerciciosData.length, ejerciciosData[0].length).setValues(ejerciciosData);
+    sheetEj.autoResizeColumns(1, headers.length);
+  }
+
+  // 6. RUTINAS_BASE
+  let sheetRut = getOrCreateSheet(ss, SHEETS.RUTINAS_BASE);
+  if (sheetRut.getLastRow() === 0) {
+    const headers = [
+      'id_rutina_item', 'dia_semana', 'nombre_sesion', 'orden_ejercicio',
+      'id_ejercicio', 'series_objetivo', 'reps_min', 'reps_max', 'rir_objetivo', 'descanso_seg'
+    ];
+    sheetRut.appendRow(headers);
+    formatHeaderRow(sheetRut);
+
+    const rutinasData = [
+      // Lunes: Pecho y Tríceps + Abdomen
+      ['RUT-001', 'Lunes', 'Pecho y Tríceps + Abdomen', 1, 'EJ-001', 4, 8, 10, 2, 120],
+      ['RUT-002', 'Lunes', 'Pecho y Tríceps + Abdomen', 2, 'EJ-002', 3, 10, 12, 2, 120],
+      ['RUT-003', 'Lunes', 'Pecho y Tríceps + Abdomen', 3, 'EJ-003', 3, 12, 15, 2, 90],
+      ['RUT-004', 'Lunes', 'Pecho y Tríceps + Abdomen', 4, 'EJ-013', 3, 12, 15, 2, 90],
+      ['RUT-005', 'Lunes', 'Pecho y Tríceps + Abdomen', 5, 'EJ-024', 3, 10, 12, 2, 90],
+      ['RUT-006', 'Lunes', 'Pecho y Tríceps + Abdomen', 6, 'EJ-017', 3, 12, 15, 2, 90],
+      ['RUT-007', 'Lunes', 'Pecho y Tríceps + Abdomen', 7, 'EJ-018', 3, 10, 15, 2, 90],
+      ['RUT-008', 'Lunes', 'Pecho y Tríceps + Abdomen', 8, 'EJ-015', 3, 30, 45, 2, 90],
+      // Martes: Espalda y Bíceps
+      ['RUT-009', 'Martes', 'Espalda y Bíceps', 1, 'EJ-004', 4, 8, 12, 2, 120],
+      ['RUT-010', 'Martes', 'Espalda y Bíceps', 2, 'EJ-006', 3, 10, 12, 2, 120],
+      ['RUT-011', 'Martes', 'Espalda y Bíceps', 3, 'EJ-005', 3, 10, 12, 2, 120],
+      ['RUT-012', 'Martes', 'Espalda y Bíceps', 4, 'EJ-020', 3, 12, 15, 2, 90],
+      ['RUT-013', 'Martes', 'Espalda y Bíceps', 5, 'EJ-012', 3, 10, 12, 2, 90],
+      ['RUT-014', 'Martes', 'Espalda y Bíceps', 6, 'EJ-019', 3, 12, 12, 2, 90],
+      // Miércoles: Piernas + Abdomen
+      ['RUT-015', 'Miércoles', 'Piernas + Abdomen', 1, 'EJ-007', 4, 8, 12, 2, 120],
+      ['RUT-016', 'Miércoles', 'Piernas + Abdomen', 2, 'EJ-008', 3, 10, 12, 2, 120],
+      ['RUT-017', 'Miércoles', 'Piernas + Abdomen', 3, 'EJ-021', 3, 10, 12, 2, 120],
+      ['RUT-018', 'Miércoles', 'Piernas + Abdomen', 4, 'EJ-009', 3, 12, 15, 2, 90],
+      ['RUT-019', 'Miércoles', 'Piernas + Abdomen', 5, 'EJ-022', 3, 15, 15, 2, 90],
+      ['RUT-020', 'Miércoles', 'Piernas + Abdomen', 6, 'EJ-017', 3, 12, 15, 2, 90],
+      ['RUT-021', 'Miércoles', 'Piernas + Abdomen', 7, 'EJ-018', 3, 10, 15, 2, 90],
+      ['RUT-022', 'Miércoles', 'Piernas + Abdomen', 8, 'EJ-015', 3, 30, 45, 2, 90],
+      // Jueves: Pecho y Hombros + Abdomen
+      ['RUT-023', 'Jueves', 'Pecho y Hombros + Abdomen', 1, 'EJ-002', 4, 8, 10, 2, 120],
+      ['RUT-024', 'Jueves', 'Pecho y Hombros + Abdomen', 2, 'EJ-011', 3, 8, 12, 2, 120],
+      ['RUT-025', 'Jueves', 'Pecho y Hombros + Abdomen', 3, 'EJ-010', 4, 12, 15, 2, 90],
+      ['RUT-026', 'Jueves', 'Pecho y Hombros + Abdomen', 4, 'EJ-003', 3, 12, 15, 2, 90],
+      ['RUT-027', 'Jueves', 'Pecho y Hombros + Abdomen', 5, 'EJ-020', 3, 12, 15, 2, 90],
+      ['RUT-028', 'Jueves', 'Pecho y Hombros + Abdomen', 6, 'EJ-017', 3, 12, 15, 2, 90],
+      ['RUT-029', 'Jueves', 'Pecho y Hombros + Abdomen', 7, 'EJ-018', 3, 10, 15, 2, 90],
+      ['RUT-030', 'Jueves', 'Pecho y Hombros + Abdomen', 8, 'EJ-015', 3, 30, 45, 2, 90],
+      // Viernes: Full Body
+      ['RUT-031', 'Viernes', 'Full Body', 1, 'EJ-008', 3, 10, 12, 2, 120],
+      ['RUT-032', 'Viernes', 'Full Body', 2, 'EJ-001', 3, 10, 12, 2, 120],
+      ['RUT-033', 'Viernes', 'Full Body', 3, 'EJ-004', 3, 10, 12, 2, 120],
+      ['RUT-034', 'Viernes', 'Full Body', 4, 'EJ-023', 2, 12, 12, 2, 90],
+      ['RUT-035', 'Viernes', 'Full Body', 5, 'EJ-012', 2, 12, 12, 2, 90],
+      ['RUT-036', 'Viernes', 'Full Body', 6, 'EJ-013', 2, 12, 12, 2, 90],
+      // Sábado: Caminata
+      ['RUT-037', 'Sábado', 'Caminata cerro San Cristóbal (60-90 min)', 1, 'EJ-016', 1, 10000, 12000, 3, 0],
+      // Domingo: Descanso
+      ['RUT-038', 'Domingo', 'Descanso Total y Recuperación', 1, 'EJ-016', 1, 5000, 8000, 3, 0]
+    ];
+    sheetRut.getRange(2, 1, rutinasData.length, rutinasData[0].length).setValues(rutinasData);
+    sheetRut.autoResizeColumns(1, headers.length);
+  }
+
+  // 7. ENTRENAMIENTOS
+  let sheetEnt = getOrCreateSheet(ss, SHEETS.ENTRENAMIENTOS);
+  if (sheetEnt.getLastRow() === 0) {
+    const headers = [
+      'id_serie', 'fecha', 'dia_sesion', 'id_ejercicio', 'numero_serie',
+      'peso_kg', 'repeticiones', 'rir', 'volumen_kg', 'es_record_personal',
+      'notas_serie', 'creado_en'
+    ];
+    sheetEnt.appendRow(headers);
+    formatHeaderRow(sheetEnt);
+    sheetEnt.autoResizeColumns(1, headers.length);
+  }
+
+  // 8. MEDIDAS
+  let sheetMed = getOrCreateSheet(ss, SHEETS.MEDIDAS);
+  if (sheetMed.getLastRow() === 0) {
+    const headers = [
+      'id_medida', 'fecha', 'peso_referencia', 'cintura_ombligo_cm',
+      'pecho_cm', 'brazo_izq_cm', 'brazo_der_cm', 'muslo_izq_cm',
+      'muslo_der_cm', 'cadera_cm', 'foto_frente_url', 'foto_perfil_url',
+      'foto_espalda_url', 'comentarios'
+    ];
+    sheetMed.appendRow(headers);
+    formatHeaderRow(sheetMed);
+    const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    sheetMed.appendRow([
+      'MED-' + hoyStr.replace(/-/g, ''), hoyStr, 102.0, '', '', '', '', '', '', '', '', '', '', 'Medición inicial de punto de partida.'
+    ]);
+    sheetMed.autoResizeColumns(1, headers.length);
+  }
+
+  // 9. PROGRESO_SEMANAL
+  let sheetProg = getOrCreateSheet(ss, SHEETS.PROGRESO_SEMANAL);
+  if (sheetProg.getLastRow() === 0) {
+    const headers = [
+      'semana_id', 'fecha_inicio', 'fecha_fin', 'peso_promedio', 'delta_peso_semanal',
+      'calorias_promedio', 'proteina_promedio', 'adherencia_dieta_pct',
+      'sesiones_entreno', 'volumen_total_kg', 'pasos_promedio', 'horas_sueno_prom',
+      'estado_ritmo', 'recomendacion_ia', 'ajuste_kcal_sugerido'
+    ];
+    sheetProg.appendRow(headers);
+    formatHeaderRow(sheetProg);
+    sheetProg.autoResizeColumns(1, headers.length);
+  }
+
+  return { success: true, message: 'Todas las 9 hojas se inicializaron correctamente con datos para JP.' };
+}
+
+// ============================================================================
+// MÉTODOS DE LA API (Consumidos por el frontend Web App)
+// ============================================================================
+
+/**
+ * Obtiene toda la información necesaria para el Dashboard de inicio
+ */
+function apiGetDashboardData_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const config = getConfigsAsMap(ss);
+  
+  const tz = Session.getScriptTimeZone();
+  const hoyStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const diaSemanaNombre = getDiaSemanaNombre(new Date());
+
+  // 1. Registro de hoy
+  const registroHoy = getRegistroDiarioByFecha(ss, hoyStr);
+
+  // 2. Comidas de hoy y cálculo de macros
+  const comidasHoy = getComidasByFecha(ss, hoyStr);
+  let totalesHoy = { calorias: 0, proteina: 0, carbos: 0, grasas: 0 };
+  comidasHoy.forEach(item => {
+    totalesHoy.calorias += Number(item.calorias_calc || 0);
+    totalesHoy.proteina += Number(item.proteina_calc_g || 0);
+    totalesHoy.carbos += Number(item.carbos_calc_g || 0);
+    totalesHoy.grasas += Number(item.grasas_calc_g || 0);
+  });
+
+  // 3. Rutina para el día de hoy
+  const rutinaHoy = getRutinaPorDia(ss, diaSemanaNombre);
+
+  // 4. Últimos 28 registros diarios para gráficas y promedios
+  const historialPesos = getHistorialPesos(ss, 28);
+
+  // 5. Peso actual (último disponible o baseline)
+  let pesoActual = Number(config.peso_inicio || 102.0);
+  if (registroHoy && registroHoy.peso_kg) {
+    pesoActual = Number(registroHoy.peso_kg);
+  } else if (historialPesos.length > 0) {
+    pesoActual = Number(historialPesos[historialPesos.length - 1].peso_kg);
+  }
+
+  // 6. Diagnóstico y sugerencia algorítmica
+  const diagnostico = calcularDiagnosticoRecomposicion(ss, historialPesos, config);
+
+  return {
+    success: true,
+    data: {
+      config: config,
+      hoyStr: hoyStr,
+      diaSemanaNombre: diaSemanaNombre,
+      pesoActual: pesoActual,
+      pesoMeta: Number(config.peso_meta || 80.0),
+      registroHoy: registroHoy,
+      totalesHoy: {
+        calorias: Math.round(totalesHoy.calorias),
+        proteina: Math.round(totalesHoy.proteina * 10) / 10,
+        carbos: Math.round(totalesHoy.carbos * 10) / 10,
+        grasas: Math.round(totalesHoy.grasas * 10) / 10
+      },
+      rutinaHoy: rutinaHoy,
+      historialPesos: historialPesos,
+      diagnostico: diagnostico
+    }
+  };
+}
+
+/**
+ * Guarda o actualiza el registro diario (check-in de hoy)
+ */
+function apiSaveRegistroDiario_(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.REGISTRO_DIARIO);
+    const tz = Session.getScriptTimeZone();
+    const fecha = payload.fecha || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const id = 'RD-' + fecha.replace(/-/g, '');
+
+    const data = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      let f = data[i][1];
+      let fStr = (f instanceof Date) ? Utilities.formatDate(f, tz, 'yyyy-MM-dd') : String(f).substring(0, 10);
+      if (fStr === fecha) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    const rowValues = [
+      id,
+      fecha,
+      payload.peso_kg ? Number(payload.peso_kg) : '',
+      payload.horas_sueno ? Number(payload.horas_sueno) : '',
+      payload.calidad_sueno ? Number(payload.calidad_sueno) : '',
+      payload.presion_sistolica ? Number(payload.presion_sistolica) : '',
+      payload.presion_diastolica ? Number(payload.presion_diastolica) : '',
+      payload.pasos ? Number(payload.pasos) : '',
+      payload.agua_litros ? Number(payload.agua_litros) : '',
+      payload.energia_nivel ? Number(payload.energia_nivel) : '',
+      payload.estres_nivel ? Number(payload.estres_nivel) : '',
+      payload.adherencia_dieta || '100%',
+      payload.notas || '',
+      new Date()
+    ];
+
+    if (rowIndex > 0) {
+      sheet.getRange(rowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
+
+    return { success: true, message: 'Check-in diario guardado con éxito.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * Obtiene la lista de alimentos para el módulo de nutrición
+ */
+function apiGetAlimentos_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.ALIMENTOS);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: true, alimentos: [] };
+
+  const headers = data[0];
+  const list = [];
+  for (let i = 1; i < data.length; i++) {
+    let obj = {};
+    headers.forEach((h, col) => obj[h] = data[i][col]);
+    if (obj.activo !== false) {
+      list.push(obj);
+    }
+  }
+  return { success: true, alimentos: list };
+}
+
+/**
+ * Guarda un ítem de comida consumida
+ */
+function apiSaveComidaItem_(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.COMIDAS);
+    const tz = Session.getScriptTimeZone();
+    const fecha = payload.fecha || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const hora = payload.hora || Utilities.formatDate(new Date(), tz, 'HH:mm');
+    const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const id = 'COM-' + fecha.replace(/-/g, '') + '-' + randomHex;
+
+    const rowValues = [
+      id,
+      fecha,
+      payload.tipo_comida || 'Almuerzo',
+      payload.id_alimento || '',
+      payload.nombre_alimento || '',
+      Number(payload.cantidad || 0),
+      payload.unidad || 'g',
+      Math.round(Number(payload.calorias_calc || 0)),
+      Math.round(Number(payload.proteina_calc_g || 0) * 10) / 10,
+      Math.round(Number(payload.carbos_calc_g || 0) * 10) / 10,
+      Math.round(Number(payload.grasas_calc_g || 0) * 10) / 10,
+      hora
+    ];
+
+    sheet.appendRow(rowValues);
+    return { success: true, message: 'Comida registrada correctamente.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * Elimina un registro de comida
+ */
+function apiDeleteComidaItem_(idComidaItem) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.COMIDAS);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === idComidaItem) {
+        sheet.deleteRow(i + 1);
+        return { success: true, message: 'Ítem eliminado.' };
+      }
+    }
+    return { success: false, error: 'No se encontró el ítem.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * Obtiene las comidas del día seleccionado
+ */
+function apiGetComidasDia_(fecha) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tz = Session.getScriptTimeZone();
+  const targetDate = fecha || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const items = getComidasByFecha(ss, targetDate);
+  return { success: true, fecha: targetDate, comidas: items };
+}
+
+/**
+ * Guarda una serie de entrenamiento (Sobrecarga Progresiva)
+ */
+function apiSaveSerieEntrenamiento_(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.ENTRENAMIENTOS);
+    const tz = Session.getScriptTimeZone();
+    const fecha = payload.fecha || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const id = 'ENT-' + fecha.replace(/-/g, '') + '-' + randomHex;
+
+    const peso = Number(payload.peso_kg || 0);
+    const reps = Number(payload.repeticiones || 0);
+    const volumen = Math.round(peso * reps * 10) / 10;
+
+    const rowValues = [
+      id,
+      fecha,
+      payload.dia_sesion || '',
+      payload.id_ejercicio || '',
+      Number(payload.numero_serie || 1),
+      peso,
+      reps,
+      payload.rir !== undefined ? Number(payload.rir) : 1,
+      volumen,
+      payload.es_record_personal || false,
+      payload.notas_serie || '',
+      new Date()
+    ];
+
+    sheet.appendRow(rowValues);
+    return { success: true, message: 'Serie guardada con éxito.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * Obtiene el historial previo de un ejercicio para comparar sobrecarga progresiva
+ */
+function apiGetHistorialEjercicio_(idEjercicio) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.ENTRENAMIENTOS);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: true, historial: [] };
+
+  const tz = Session.getScriptTimeZone();
+  const records = [];
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][3] === idEjercicio) {
+      let f = data[i][1];
+      let fStr = (f instanceof Date) ? Utilities.formatDate(f, tz, 'yyyy-MM-dd') : String(f).substring(0, 10);
+      records.push({
+        id_serie: data[i][0],
+        fecha: fStr,
+        numero_serie: data[i][4],
+        peso_kg: data[i][5],
+        repeticiones: data[i][6],
+        rir: data[i][7],
+        volumen_kg: data[i][8],
+        notas: data[i][10]
+      });
+    }
+  }
+
+  // Agrupar por fecha
+  const porFecha = {};
+  records.forEach(r => {
+    if (!porFecha[r.fecha]) porFecha[r.fecha] = [];
+    porFecha[r.fecha].push(r);
+  });
+
+  return { success: true, agupadoPorFecha: porFecha, todos: records };
+}
+
+/**
+ * Guarda una medición antropométrica
+ */
+function apiSaveMedida_(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.MEDIDAS);
+    const tz = Session.getScriptTimeZone();
+    const fecha = payload.fecha || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const id = 'MED-' + fecha.replace(/-/g, '');
+
+    const rowValues = [
+      id,
+      fecha,
+      payload.peso_referencia ? Number(payload.peso_referencia) : '',
+      payload.cintura_ombligo_cm ? Number(payload.cintura_ombligo_cm) : '',
+      payload.pecho_cm ? Number(payload.pecho_cm) : '',
+      payload.brazo_izq_cm ? Number(payload.brazo_izq_cm) : '',
+      payload.brazo_der_cm ? Number(payload.brazo_der_cm) : '',
+      payload.muslo_izq_cm ? Number(payload.muslo_izq_cm) : '',
+      payload.muslo_der_cm ? Number(payload.muslo_der_cm) : '',
+      payload.cadera_cm ? Number(payload.cadera_cm) : '',
+      payload.foto_frente_url || '',
+      payload.foto_perfil_url || '',
+      payload.foto_espalda_url || '',
+      payload.comentarios || ''
+    ];
+
+    sheet.appendRow(rowValues);
+    return { success: true, message: 'Medidas corporales guardadas.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * Obtiene lista de medidas históricas
+ */
+function apiGetMedidas_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.MEDIDAS);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: true, medidas: [] };
+
+  const tz = Session.getScriptTimeZone();
+  const headers = data[0];
+  const list = [];
+  for (let i = 1; i < data.length; i++) {
+    let obj = {};
+    headers.forEach((h, col) => {
+      let val = data[i][col];
+      if (val instanceof Date) {
+        val = Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      }
+      obj[h] = val;
+    });
+    list.push(obj);
+  }
+  return { success: true, medidas: list };
+}
+
+/**
+ * Guarda o actualiza configuraciones en la hoja CONFIG
+ */
+function apiSaveConfig_(configMap) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEETS.CONFIG);
+    const data = sheet.getDataRange().getValues();
+
+    for (let key in configMap) {
+      let updated = false;
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === key) {
+          sheet.getRange(i + 1, 2).setValue(configMap[key]);
+          sheet.getRange(i + 1, 4).setValue(new Date());
+          updated = true;
+          break;
+        }
+      }
+      if (!updated) {
+        sheet.appendRow([key, configMap[key], '', new Date()]);
+      }
+    }
+    return { success: true, message: 'Configuraciones actualizadas con éxito.' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+// ============================================================================
+// FUNCIONES AUXILIARES INTERNAS
+// ============================================================================
+
+function getOrCreateSheet(ss, name) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+  }
+  return sheet;
+}
+
+function formatHeaderRow(sheet) {
+  const headerRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+  headerRange.setBackground('#0f172a'); // Slate 900
+  headerRange.setFontColor('#f8fafc'); // Slate 50
+  headerRange.setFontWeight('bold');
+  sheet.setFrozenRows(1);
+}
+
+function getConfigsAsMap(ss) {
+  const sheet = ss.getSheetByName(SHEETS.CONFIG);
+  if (!sheet) return {};
+  const data = sheet.getDataRange().getValues();
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]) {
+      map[data[i][0]] = data[i][1];
+    }
+  }
+  return map;
+}
+
+function getRegistroDiarioByFecha(ss, fechaStr) {
+  const sheet = ss.getSheetByName(SHEETS.REGISTRO_DIARIO);
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const headers = data[0];
+
+  for (let i = 1; i < data.length; i++) {
+    let f = data[i][1];
+    let fStr = (f instanceof Date) ? Utilities.formatDate(f, tz, 'yyyy-MM-dd') : String(f).substring(0, 10);
+    if (fStr === fechaStr) {
+      let obj = {};
+      headers.forEach((h, col) => obj[h] = data[i][col]);
+      return obj;
+    }
+  }
+  return null;
+}
+
+function getComidasByFecha(ss, fechaStr) {
+  const sheet = ss.getSheetByName(SHEETS.COMIDAS);
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const headers = data[0];
+  const list = [];
+
+  for (let i = 1; i < data.length; i++) {
+    let f = data[i][1];
+    let fStr = (f instanceof Date) ? Utilities.formatDate(f, tz, 'yyyy-MM-dd') : String(f).substring(0, 10);
+    if (fStr === fechaStr) {
+      let obj = {};
+      headers.forEach((h, col) => obj[h] = data[i][col]);
+      list.push(obj);
+    }
+  }
+  return list;
+}
+
+function getDiaSemanaNombre(fecha) {
+  const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  return dias[fecha.getDay()];
+}
+
+/**
+ * Migración idempotente: añade a EJERCICIOS las columnas modo / trabajo_seg /
+ * descanso_intervalo_seg y rellena video_url vacíos con una búsqueda en YouTube.
+ * Se ejecuta sola la primera vez que se lee la rutina.
+ * modo = 'reps' (solo cronometra descanso) | 'tiempo' (trabajo + descanso + series)
+ */
+function ensureEjerciciosV2(sheetEj) {
+  const lastRow = sheetEj.getLastRow();
+  const lastCol = sheetEj.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return;
+  const headers = sheetEj.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('modo') !== -1) return;
+
+  const startCol = lastCol + 1;
+  sheetEj.getRange(1, startCol, 1, 3).setValues([['modo', 'trabajo_seg', 'descanso_intervalo_seg']]);
+  sheetEj.getRange(1, startCol, 1, 3).setFontWeight('bold');
+
+  if (lastRow >= 2) {
+    const base = sheetEj.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    const iVideo = headers.indexOf('video_url');
+    const extra = [];
+    const videos = [];
+    base.forEach(function (r) {
+      const esPlancha = r[0] === 'EJ-015';
+      extra.push([esPlancha ? 'tiempo' : 'reps', esPlancha ? 40 : '', esPlancha ? 45 : '']);
+      if (iVideo !== -1) {
+        videos.push([r[iVideo] || ('https://www.youtube.com/results?search_query=' +
+          encodeURIComponent('técnica ' + r[1] + ' ejercicio'))]);
+      }
+    });
+    sheetEj.getRange(2, startCol, extra.length, 3).setValues(extra);
+    if (iVideo !== -1) sheetEj.getRange(2, iVideo + 1, videos.length, 1).setValues(videos);
+  }
+}
+
+function getRutinaPorDia(ss, diaSemana) {
+  const sheetRut = ss.getSheetByName(SHEETS.RUTINAS_BASE);
+  const sheetEj = ss.getSheetByName(SHEETS.EJERCICIOS);
+  if (!sheetRut || !sheetEj) return { dia: diaSemana, sesion: 'Sin programar', ejercicios: [] };
+
+  ensureEjerciciosV2(sheetEj);
+
+  const rutData = sheetRut.getDataRange().getValues();
+  const ejData = sheetEj.getDataRange().getValues();
+  const H = {};
+  ejData[0].forEach(function (h, i) { H[h] = i; });
+  const col = function (row, name, fb) { return H[name] !== undefined ? row[H[name]] : fb; };
+
+  // Mapear catálogo de ejercicios
+  const ejMap = {};
+  for (let i = 1; i < ejData.length; i++) {
+    const r = ejData[i];
+    ejMap[r[0]] = {
+      id_ejercicio: r[0],
+      nombre: r[1],
+      grupo_muscular: r[2],
+      tipo_carga: r[3],
+      video_url: col(r, 'video_url', ''),
+      notas_tecnica: col(r, 'notas_tecnica', ''),
+      modo: col(r, 'modo', 'reps') === 'tiempo' ? 'tiempo' : 'reps',
+      trabajo_seg: Number(col(r, 'trabajo_seg', 0)) || 0,
+      descanso_intervalo_seg: Number(col(r, 'descanso_intervalo_seg', 0)) || 0
+    };
+  }
+
+  let nombreSesion = 'Descanso';
+  const ejercicios = [];
+
+  for (let i = 1; i < rutData.length; i++) {
+    if (rutData[i][1] === diaSemana) {
+      nombreSesion = rutData[i][2];
+      let idEj = rutData[i][4];
+      let ejInfo = ejMap[idEj] || { nombre: 'Ejercicio ' + idEj, grupo_muscular: '', tipo_carga: '' };
+      
+      ejercicios.push({
+        orden: rutData[i][3],
+        id_ejercicio: idEj,
+        nombre: ejInfo.nombre,
+        grupo_muscular: ejInfo.grupo_muscular,
+        tipo_carga: ejInfo.tipo_carga,
+        notas_tecnica: ejInfo.notas_tecnica,
+        video_url: ejInfo.video_url || '',
+        modo: ejInfo.modo || 'reps',
+        trabajo_seg: ejInfo.trabajo_seg || 0,
+        descanso_intervalo_seg: ejInfo.descanso_intervalo_seg || 0,
+        series_objetivo: rutData[i][5],
+        reps_min: rutData[i][6],
+        reps_max: rutData[i][7],
+        rir_objetivo: rutData[i][8],
+        descanso_seg: rutData[i][9]
+      });
+    }
+  }
+
+  ejercicios.sort((a, b) => a.orden - b.orden);
+
+  return {
+    dia: diaSemana,
+    sesion: nombreSesion,
+    ejercicios: ejercicios
+  };
+}
+
+function getHistorialPesos(ss, limit) {
+  const sheet = ss.getSheetByName(SHEETS.REGISTRO_DIARIO);
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const list = [];
+
+  for (let i = 1; i < data.length; i++) {
+    let peso = data[i][2];
+    if (peso && !isNaN(peso)) {
+      let f = data[i][1];
+      let fStr = (f instanceof Date) ? Utilities.formatDate(f, tz, 'yyyy-MM-dd') : String(f).substring(0, 10);
+      list.push({
+        fecha: fStr,
+        peso_kg: Number(peso),
+        pasos: data[i][7] || 0,
+        horas_sueno: data[i][3] || 0
+      });
+    }
+  }
+
+  return list.slice(-limit);
+}
+
+/**
+ * Motor de decisión semanal (semáforo JP).
+ * Usa el PESO PROMEDIO de ventanas de 7 días (no el peso de un solo día):
+ *   semana actual = últimos 7 días hasta el último pesaje; semana previa = 7 días antes; etc.
+ *   Una semana es válida con al menos 3 pesajes.
+ *   VERDE   : baja 0,4-0,9 kg/semana  -> mantener
+ *   AMARILLO: baja menos de 0,3 kg durante 2 semanas seguidas -> revisar hábitos y, si se cumplió, -100/150 kcal
+ *   ROJO    : baja más de 1 kg/semana -> si hay debilidad, hambre o cae la fuerza, +100/150 kcal
+ */
+function promedioVentana_(historial, finStr, diasAtras0, diasAtras1) {
+  // ventana [fin - diasAtras1, fin - diasAtras0] en días
+  const fin = new Date(finStr + 'T12:00:00Z').getTime();
+  const dia = 24 * 3600 * 1000;
+  const desde = fin - diasAtras1 * dia;
+  const hasta = fin - diasAtras0 * dia;
+  const items = historial.filter(function (r) {
+    const t = new Date(r.fecha + 'T12:00:00Z').getTime();
+    return t >= desde && t <= hasta;
+  });
+  if (items.length < 3) return null;
+  return items.reduce(function (acc, r) { return acc + r.peso_kg; }, 0) / items.length;
+}
+
+function calcularDiagnosticoRecomposicion(ss, historialPesos, config) {
+  const kcal = Number((config && config.calorias_meta) || 2150);
+  const lista = (historialPesos || []).slice().sort(function (x, y) { return x.fecha < y.fecha ? -1 : 1; });
+  const calibracion = {
+    estado: 'Fase de Calibración',
+    semaforo: 'azul',
+    color: 'blue',
+    mensaje: 'Necesito al menos 3 pesajes en cada una de 2 semanas para medir tu ritmo. Pésate en ayunas, mismo horario.',
+    recomendacion: 'Mantener ' + kcal + ' kcal y ' + Number((config && config.proteina_meta) || 153) + ' g de proteína base.',
+    ajusteKcal: 0
+  };
+  if (lista.length < 3) return calibracion;
+
+  const fin = lista[lista.length - 1].fecha;
+  const w0 = promedioVentana_(lista, fin, 0, 6);
+  const w1 = promedioVentana_(lista, fin, 7, 13);
+  const w2 = promedioVentana_(lista, fin, 14, 20);
+  const r2 = function (n) { return Math.round(n * 100) / 100; };
+  if (w0 === null) return calibracion;
+
+  const base = { pesoPromedioSemana: r2(w0), pesoPromedioSemanaAnterior: w1 === null ? null : r2(w1) };
+  if (w1 === null) {
+    return Object.assign({}, calibracion, base, {
+      mensaje: 'Peso promedio de esta semana: ' + r2(w0) + ' kg. Falta la semana previa para calcular el ritmo.'
+    });
+  }
+
+  const bajada = r2(w1 - w0);            // kg perdidos esta semana (positivo = bajó)
+  const bajadaPrev = w2 === null ? null : r2(w2 - w1);
+  const delta = -bajada;
+  base.cambioSemanal = delta;
+
+  if (bajada > 1.0) {
+    return Object.assign({}, base, {
+      estado: '🔴 Bajando muy rápido', semaforo: 'rojo', color: 'rose', delta: delta,
+      mensaje: 'Bajaste ' + bajada + ' kg de promedio esta semana (más de 1 kg). Si además notas debilidad, mucha hambre o cae tu fuerza, estás perdiendo demasiado rápido.',
+      recomendacion: 'Si hay esos síntomas, sube 100-150 kcal. Si no, mantén y vigila una semana más.',
+      ajusteKcal: 150
+    });
+  }
+  if (bajada >= 0.4) {
+    return Object.assign({}, base, {
+      estado: '🟢 Ritmo adecuado', semaforo: 'verde', color: 'emerald', delta: delta,
+      mensaje: 'Bajaste ' + bajada + ' kg de promedio esta semana. Ritmo verde (0,4-0,9 kg/semana): protege el músculo.',
+      recomendacion: 'Mantener ' + kcal + ' kcal. No cambies nada.',
+      ajusteKcal: 0
+    });
+  }
+  if (bajada >= 0.3) {
+    return Object.assign({}, base, {
+      estado: '🟢 Ritmo sostenible', semaforo: 'verde', color: 'emerald', delta: delta,
+      mensaje: 'Bajaste ' + bajada + ' kg de promedio esta semana. Un poco lento pero dentro de lo normal.',
+      recomendacion: 'Mantener ' + kcal + ' kcal y observar la próxima semana.',
+      ajusteKcal: 0
+    });
+  }
+  // bajada < 0,3 kg
+  if (bajadaPrev !== null && bajadaPrev < 0.3) {
+    return Object.assign({}, base, {
+      estado: '🟡 Estancado 2 semanas', semaforo: 'amarillo', color: 'amber', delta: delta,
+      mensaje: 'Menos de 0,3 kg de baja durante 2 semanas seguidas (' + bajadaPrev + ' y ' + bajada + ' kg). Primero revisa: pan extra, picoteos, bebidas con calorías, porciones, entrenamientos y pasos.',
+      recomendacion: 'Si realmente cumpliste el plan, reduce 100-150 kcal (meta de ' + (kcal - 150) + ' a ' + (kcal - 100) + ' kcal) o suma 2.000 pasos diarios.',
+      ajusteKcal: -150
+    });
+  }
+  return Object.assign({}, base, {
+    estado: '⏳ Ritmo lento (1ª semana)', semaforo: 'azul', color: 'blue', delta: delta,
+    mensaje: 'Esta semana bajaste ' + bajada + ' kg de promedio. Una sola semana lenta no obliga a cambiar nada: el peso sube y baja por agua y sal.',
+    recomendacion: 'Mantener ' + kcal + ' kcal y revisar adherencia. Si la próxima semana sigue bajo 0,3 kg, ajustamos.',
+    ajusteKcal: 0
+  });
+}
+
+
+// ============================================================================
+// ENVOLTORIOS PÚBLICOS: google.script.run no puede devolver objetos Date
+// (el cliente recibiría null). Se convierten a texto yyyy-MM-dd.
+// Las funciones *_ con guion bajo final son privadas y no se llaman desde el cliente.
+// ============================================================================
+function serializarCliente_(obj) {
+  const tz = Session.getScriptTimeZone();
+  return JSON.parse(JSON.stringify(obj, function (k, v) {
+    const raw = this[k];
+    if (raw instanceof Date) return Utilities.formatDate(raw, tz, 'yyyy-MM-dd');
+    return v;
+  }));
+}
+
+function apiGetDashboardData() {
+  return serializarCliente_(apiGetDashboardData_());
+}
+
+function apiSaveRegistroDiario(payload) {
+  return serializarCliente_(apiSaveRegistroDiario_(payload));
+}
+
+function apiGetAlimentos() {
+  return serializarCliente_(apiGetAlimentos_());
+}
+
+function apiSaveComidaItem(payload) {
+  return serializarCliente_(apiSaveComidaItem_(payload));
+}
+
+function apiDeleteComidaItem(idComidaItem) {
+  return serializarCliente_(apiDeleteComidaItem_(idComidaItem));
+}
+
+function apiGetComidasDia(fecha) {
+  return serializarCliente_(apiGetComidasDia_(fecha));
+}
+
+function apiSaveSerieEntrenamiento(payload) {
+  return serializarCliente_(apiSaveSerieEntrenamiento_(payload));
+}
+
+function apiGetHistorialEjercicio(idEjercicio) {
+  return serializarCliente_(apiGetHistorialEjercicio_(idEjercicio));
+}
+
+function apiSaveMedida(payload) {
+  return serializarCliente_(apiSaveMedida_(payload));
+}
+
+function apiGetMedidas() {
+  return serializarCliente_(apiGetMedidas_());
+}
+
+function apiSaveConfig(configMap) {
+  return serializarCliente_(apiSaveConfig_(configMap));
+}
+
+/** Rutina de otro día (selector "Cambiar Día" de la pestaña Entreno). */
+function apiGetRutinaDia(dia) {
+  return serializarCliente_(getRutinaPorDia(SpreadsheetApp.getActiveSpreadsheet(), String(dia)));
+}

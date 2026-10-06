@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>JP Fitness Control</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js para gráficas de progreso -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              dark: '#0B0F17',
+              card: '#151D2C',
+              border: '#222F43',
+              accent: '#10B981', // Emerald
+              blue: '#3B82F6',
+              amber: '#F59E0B',
+              rose: '#F43F5E'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Ocultar barra de scroll para navegación suave en móvil */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  </style>
+</head>
+<body class="bg-brand-dark text-slate-100 min-h-screen pb-24 md:pb-8 font-sans antialiased selection:bg-brand-accent selection:text-slate-900">
+
+  <!-- ==================== TOP BAR ==================== -->
+  <header class="sticky top-0 z-30 bg-brand-dark/95 backdrop-blur-md border-b border-brand-border px-4 py-3">
+    <div class="max-w-4xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-black text-slate-950 text-base shadow-lg shadow-emerald-500/20">
+          JP
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white leading-tight">JP Fitness Control</h1>
+          <p class="text-xs text-slate-400" id="top-date-display">Cargando fecha...</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span id="sync-status" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
+          <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          Conectado
+        </span>
+        <button onclick="recargarDashboard()" title="Actualizar datos" class="p-2 rounded-lg bg-brand-card hover:bg-slate-800 text-slate-300 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== CONTENEDOR PRINCIPAL ==================== -->
+  <main class="max-w-4xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- ----------------- PESTAÑA 1: INICIO / DASHBOARD ----------------- -->
+    <section id="tab-inicio" class="tab-content space-y-5">
+      
+      <!-- Barra de Meta Principal 101 kg -> 80 kg -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-xl relative overflow-hidden">
+        <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+        <div class="flex justify-between items-end mb-2">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Objetivo Recomposición</span>
+            <div class="text-2xl font-black text-white mt-0.5">
+              <span id="dash-peso-actual">--</span> <span class="text-sm font-normal text-slate-400">kg actual</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-400">Meta Final</span>
+            <div class="text-lg font-bold text-slate-200">80.0 kg</div>
+          </div>
+        </div>
+        
+        <!-- Barra de Progreso -->
+        <div class="w-full bg-slate-800/80 rounded-full h-3.5 p-0.5 overflow-hidden border border-slate-700/60">
+          <div id="dash-progress-bar" class="bg-gradient-to-r from-emerald-500 to-blue-500 h-full rounded-full transition-all duration-700" style="width: 5%"></div>
+        </div>
+
+        <div class="flex justify-between text-xs text-slate-400 mt-2 font-medium">
+          <span>Punto de partida: 102.0 kg</span>
+          <span id="dash-kilos-restantes" class="text-emerald-400 font-semibold">Faltan 22.0 kg</span>
+          <span>Meta: 80.0 kg</span>
+        </div>
+      </div>
+
+      <!-- Tarjeta Check-in Diario Rápido -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">☀️</span>
+            <h2 class="text-base font-bold text-white">Check-in de Hoy</h2>
+          </div>
+          <span id="checkin-badge" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">Pendiente</span>
+        </div>
+
+        <form id="form-checkin" onsubmit="handleGuardarCheckin(event)" class="space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <!-- Peso -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">⚖️ Peso (kg)</label>
+              <input type="number" step="0.1" id="ci-peso" placeholder="101.0" class="w-full bg-transparent text-xl font-bold text-white focus:outline-none focus:ring-0">
+            </div>
+            <!-- Sueño -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">😴 Sueño (hrs)</label>
+              <input type="number" step="0.5" id="ci-sueno" placeholder="7.5" class="w-full bg-transparent text-xl font-bold text-white focus:outline-none focus:ring-0">
+            </div>
+            <!-- Presión Arterial -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">🩺 Presión (S/D)</label>
+              <div class="flex items-center space-x-1">
+                <input type="number" id="ci-pres-sis" placeholder="120" class="w-1/2 bg-transparent text-lg font-bold text-white focus:outline-none">
+                <span class="text-slate-500">/</span>
+                <input type="number" id="ci-pres-dia" placeholder="80" class="w-1/2 bg-transparent text-lg font-bold text-white focus:outline-none">
+              </div>
+            </div>
+            <!-- Pasos -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">👟 Pasos</label>
+              <input type="number" id="ci-pasos" placeholder="10000" class="w-full bg-transparent text-xl font-bold text-white focus:outline-none">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <!-- Agua -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">💧 Agua (Litros)</label>
+              <input type="number" step="0.2" id="ci-agua" placeholder="3.0" class="w-full bg-transparent text-lg font-bold text-white focus:outline-none">
+            </div>
+            <!-- Nivel Energía (1 al 5) -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">⚡ Energía (1-5)</label>
+              <select id="ci-energia" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none">
+                <option value="5" class="bg-slate-900">5 - Excelente</option>
+                <option value="4" selected class="bg-slate-900">4 - Buena</option>
+                <option value="3" class="bg-slate-900">3 - Normal</option>
+                <option value="2" class="bg-slate-900">2 - Baja</option>
+                <option value="1" class="bg-slate-900">1 - Muy cansado</option>
+              </select>
+            </div>
+            <!-- Nivel Estrés (1 al 5) -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 col-span-2 sm:col-span-1">
+              <label class="block text-xs text-slate-400 mb-1 font-medium">🧠 Estrés (1-5)</label>
+              <select id="ci-estres" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none">
+                <option value="1" class="bg-slate-900">1 - Relajado</option>
+                <option value="2" selected class="bg-slate-900">2 - Bajo</option>
+                <option value="3" class="bg-slate-900">3 - Moderado</option>
+                <option value="4" class="bg-slate-900">4 - Alto</option>
+                <option value="5" class="bg-slate-900">5 - Extremo</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex justify-end pt-1">
+            <button type="submit" id="btn-save-checkin" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 font-bold text-slate-950 text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2">
+              <span>Guardar Check-in</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Resumen Nutricional Hoy -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">🥗</span>
+            <h2 class="text-base font-bold text-white">Nutrición de Hoy</h2>
+          </div>
+          <button onclick="cambiarTab('nutricion')" class="text-xs text-emerald-400 font-semibold hover:underline">
+            + Añadir Comida
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <!-- Calorías -->
+          <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+            <span class="text-xs text-slate-400 block mb-0.5">Calorías</span>
+            <div class="text-xl font-black text-white" id="dash-calorias-val">0</div>
+            <span class="text-xs text-slate-500">de 2.150 kcal</span>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+              <div id="bar-calorias" class="bg-emerald-500 h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+          </div>
+          <!-- Proteína -->
+          <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+            <span class="text-xs text-slate-400 block mb-0.5">Proteína</span>
+            <div class="text-xl font-black text-blue-400" id="dash-proteina-val">0g</div>
+            <span class="text-xs text-slate-500">de 153 g</span>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+              <div id="bar-proteina" class="bg-blue-500 h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+          </div>
+          <!-- Carbohidratos -->
+          <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+            <span class="text-xs text-slate-400 block mb-0.5">Carbohidratos</span>
+            <div class="text-xl font-black text-amber-400" id="dash-carbos-val">0g</div>
+            <span class="text-xs text-slate-500">de 238 g</span>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+              <div id="bar-carbos" class="bg-amber-500 h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+          </div>
+          <!-- Grasas -->
+          <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+            <span class="text-xs text-slate-400 block mb-0.5">Grasas</span>
+            <div class="text-xl font-black text-rose-400" id="dash-grasas-val">0g</div>
+            <span class="text-xs text-slate-500">de 65 g</span>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+              <div id="bar-grasas" class="bg-rose-500 h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tarjeta Entrenamiento de Hoy -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">🏋️‍♂️</span>
+            <h2 class="text-base font-bold text-white">Sesión Programada Hoy</h2>
+          </div>
+          <span id="dash-dia-nombre" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">Lunes</span>
+        </div>
+        <div id="dash-rutina-box" class="p-3.5 bg-slate-900/70 rounded-xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="text-sm font-bold text-white" id="dash-sesion-titulo">Cargando rutina...</div>
+            <div class="text-xs text-slate-400 mt-0.5" id="dash-sesion-sub">5 ejercicios programados</div>
+          </div>
+          <button onclick="cambiarTab('entreno')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold text-xs text-white shadow-md shadow-blue-600/20 transition">
+            Ir a Entrenar
+          </button>
+        </div>
+      </div>
+
+      <!-- Diagnóstico del Motor de Recomposición IA -->
+      <div id="dash-diagnostico-card" class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center space-x-2 mb-2">
+          <span class="text-base">🤖</span>
+          <h3 class="text-sm font-bold text-white">Diagnóstico del Motor de Recomposición</h3>
+        </div>
+        <div class="text-xs text-slate-300 leading-relaxed" id="dash-diag-mensaje">
+          Analizando datos de pesajes...
+        </div>
+        <div class="mt-3 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-medium text-emerald-400 flex items-center space-x-2" id="dash-diag-recom">
+          <span>💡 Recomendación: Mantener 2.200 kcal y 170g de proteína.</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ----------------- PESTAÑA 2: NUTRICIÓN ----------------- -->
+    <section id="tab-nutricion" class="tab-content hidden space-y-5">
+      
+      <!-- Selector de Comida -->
+      <div class="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs font-semibold">
+        <button onclick="seleccionarTipoComida('Desayuno')" class="btn-comida px-3.5 py-2 rounded-xl bg-emerald-500 text-slate-950 whitespace-nowrap">Desayuno</button>
+        <button onclick="seleccionarTipoComida('Almuerzo')" class="btn-comida px-3.5 py-2 rounded-xl bg-brand-card text-slate-300 border border-brand-border whitespace-nowrap">Almuerzo</button>
+        <button onclick="seleccionarTipoComida('Once/Merienda')" class="btn-comida px-3.5 py-2 rounded-xl bg-brand-card text-slate-300 border border-brand-border whitespace-nowrap">Once/Merienda</button>
+        <button onclick="seleccionarTipoComida('Cena')" class="btn-comida px-3.5 py-2 rounded-xl bg-brand-card text-slate-300 border border-brand-border whitespace-nowrap">Cena</button>
+        <button onclick="seleccionarTipoComida('Snack/Pre-Post')" class="btn-comida px-3.5 py-2 rounded-xl bg-brand-card text-slate-300 border border-brand-border whitespace-nowrap">Snacks</button>
+      </div>
+
+      <!-- Favoritos de 1 toque -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-4 shadow-lg">
+        <span class="text-xs font-semibold text-slate-400 block mb-2">⚡ Favoritos rápidos (1 Toque)</span>
+        <div class="flex flex-wrap gap-2" id="lista-favoritos-rapidos">
+          <!-- Botones inyectados dinámicamente -->
+        </div>
+      </div>
+
+      <!-- Buscador y Registro de Alimento -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-4">
+        <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+          <span>➕</span>
+          <span>Registrar Alimento en <span id="lbl-tipo-comida-activa" class="text-emerald-400">Desayuno</span></span>
+        </h3>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Seleccionar Alimento de la Base</label>
+            <select id="sel-alimento-db" onchange="actualizarInfoAlimentoSeleccionado()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+              <option value="">Selecciona un alimento...</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Cantidad Consumida</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="inp-cantidad-alim" placeholder="100" oninput="calcularMacrosPreview()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-base font-bold text-white focus:outline-none focus:border-emerald-500">
+                <span id="lbl-unidad-alim" class="text-xs text-slate-400 font-semibold w-12">g</span>
+              </div>
+            </div>
+            <!-- Preview Macros -->
+            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs flex flex-col justify-center">
+              <div class="text-slate-300 font-bold" id="prev-calorias">0 kcal</div>
+              <div class="text-slate-400 text-[11px] mt-0.5" id="prev-macros">P: 0g | C: 0g | G: 0g</div>
+            </div>
+          </div>
+
+          <button onclick="guardarComidaManual()" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition">
+            Añadir a Comida
+          </button>
+        </div>
+      </div>
+
+      <!-- Registro de Alimentos Consumidos Hoy -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <h3 class="text-sm font-bold text-white mb-3">Historial de Hoy</h3>
+        <div id="lista-comidas-hoy" class="divide-y divide-slate-800 text-xs">
+          <p class="text-slate-400 text-center py-4">No hay alimentos registrados hoy.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ----------------- PESTAÑA 3: ENTRENAMIENTO ----------------- -->
+    <section id="tab-entreno" class="tab-content hidden space-y-5">
+      
+      <!-- Encabezado Rutina y Selector de Día -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-blue-400">Sesión Activa</span>
+            <h2 class="text-lg font-bold text-white" id="entreno-sesion-nombre">Torso Fuerza</h2>
+          </div>
+          <div class="flex items-center space-x-2">
+            <label class="text-xs text-slate-400">Cambiar Día:</label>
+            <select id="sel-dia-entreno" onchange="cambiarDiaEntreno(this.value)" class="bg-slate-900 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-white">
+              <option value="Lunes">Lunes (Torso A)</option>
+              <option value="Martes">Martes (Pierna A)</option>
+              <option value="Miércoles">Miércoles (Torso B)</option>
+              <option value="Jueves">Jueves (Pierna B)</option>
+              <option value="Viernes">Viernes (Full Body)</option>
+              <option value="Sábado">Sábado (Cardio 10k)</option>
+              <option value="Domingo">Domingo (Descanso)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aviso de Cuidado Cardiovascular -->
+      <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center space-x-2">
+        <span class="text-base">❤️</span>
+        <span><strong>Regla de Salud JP:</strong> RIR 2 a 3 (detén la serie con 2-3 reps en reserva). Descansa 120s en compuestos y 90s en aislamiento para bajar el pulso. Si hay mareo, detén el entreno.</span>
+      </div>
+
+      <!-- Temporizador Flotante de Descanso -->
+      <div id="rest-timer-box" class="bg-slate-900/90 border border-blue-500/40 rounded-2xl p-4 shadow-xl flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-lg">
+            ⏱️
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Descanso entre series</div>
+            <div class="text-xl font-black text-white" id="timer-display">00:00</div>
+          </div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="startTimer(90)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40">90s</button>
+          <button onclick="startTimer(120)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40">120s</button>
+          <button onclick="stopTimer()" class="px-2 py-1 text-xs rounded-lg bg-rose-500/20 text-rose-400">✕</button>
+        </div>
+      </div>
+
+      <!-- Lista de Ejercicios de la Rutina -->
+      <div id="lista-ejercicios-rutina" class="space-y-4">
+        <!-- Inyectado por Javascript -->
+      </div>
+
+    </section>
+
+    <!-- ----------------- PESTAÑA 4: PROGRESO & MEDIDAS ----------------- -->
+    <section id="tab-progreso" class="tab-content hidden space-y-5">
+      
+      <!-- Gráfica de Tendencia de Peso -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-bold text-white">Evolución del Peso Corporal</h3>
+          <span class="text-xs text-slate-400">Últimos registros</span>
+        </div>
+        <div class="w-full h-64">
+          <canvas id="chart-peso"></canvas>
+        </div>
+      </div>
+
+      <!-- Registro de Medidas Antropométricas -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-white">Registro de Medidas Corporales</h3>
+            <p class="text-xs text-slate-400">Recomendado cada 15 a 30 días para chequear reducción de grasa</p>
+          </div>
+        </div>
+
+        <form id="form-medidas" onsubmit="handleGuardarMedidas(event)" class="space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-emerald-400 font-semibold mb-1">Cintura (ombligo)</label>
+              <input type="number" step="0.5" id="med-cintura" placeholder="cm" class="w-full bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1">Pecho</label>
+              <input type="number" step="0.5" id="med-pecho" placeholder="cm" class="w-full bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1">Brazo</label>
+              <input type="number" step="0.5" id="med-brazo" placeholder="cm" class="w-full bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs text-slate-400 mb-1">Muslo</label>
+              <input type="number" step="0.5" id="med-muslo" placeholder="cm" class="w-full bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Notas / Observaciones</label>
+            <input type="text" id="med-notas" placeholder="Ej: Menor volumen en cintura, más vascularización..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white">
+          </div>
+          <button type="submit" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-xs text-white shadow-md shadow-blue-600/20 transition">
+            Guardar Medidas
+          </button>
+        </form>
+
+        <div id="lista-medidas-previas" class="divide-y divide-slate-800 text-xs pt-2">
+          <!-- Inyectado dinámicamente -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ----------------- PESTAÑA 5: PERFIL & CONFIGURACIÓN ----------------- -->
+    <section id="tab-perfil" class="tab-content hidden space-y-5">
+      
+      <!-- Ficha del Atleta -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-blue-500 flex items-center justify-center font-black text-slate-950 text-xl">
+            JP
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Juan Lizama (JP)</h2>
+            <p class="text-xs text-slate-400">gmusicestudio@gmail.com</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-2 text-xs">
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block mb-0.5">Peso Inicial</span>
+            <span class="text-base font-bold text-white">101.0 kg</span>
+          </div>
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block mb-0.5">Peso Objetivo</span>
+            <span class="text-base font-bold text-emerald-400">80.0 kg</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ajuste de Metas Diarias -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-4">
+        <h3 class="text-sm font-bold text-white">Ajuste de Metas Diarias</h3>
+        <form onsubmit="handleGuardarConfig(event)" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Calorías Meta (kcal)</label>
+              <input type="number" id="cfg-calorias" value="2200" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Proteína Meta (g)</label>
+              <input type="number" id="cfg-proteina" value="170" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Carbohidratos Meta (g)</label>
+              <input type="number" id="cfg-carbos" value="220" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Grasas Meta (g)</label>
+              <input type="number" id="cfg-grasas" value="65" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+            </div>
+          </div>
+          <button type="submit" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-xs text-white transition">
+            Actualizar Metas
+          </button>
+        </form>
+      </div>
+
+      <!-- Mantenimiento / Setup -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-3">
+        <h3 class="text-sm font-bold text-white">Base de Datos & Sistema</h3>
+        <p class="text-xs text-slate-400">Si acabas de vincular una hoja nueva o quieres asegurar que todas las tablas y columnas existan, puedes ejecutar la inicialización.</p>
+        <button onclick="ejecutarSetupSheets()" id="btn-setup" class="w-full py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-xs transition">
+          Verificar / Inicializar Tablas en Sheets
+        </button>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==================== BARRA DE NAVEGACIÓN INFERIOR (MÓVIL) ==================== -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-brand-dark/95 backdrop-blur-lg border-t border-brand-border py-2 px-3">
+    <div class="max-w-md mx-auto grid grid-cols-5 gap-1 text-center">
+      
+      <!-- Inicio -->
+      <button onclick="cambiarTab('inicio')" id="nav-btn-inicio" class="nav-btn flex flex-col items-center py-1 text-emerald-400 font-bold transition">
+        <span class="text-lg">🏠</span>
+        <span class="text-[10px] mt-0.5">Inicio</span>
+      </button>
+
+      <!-- Nutrición -->
+      <button onclick="cambiarTab('nutricion')" id="nav-btn-nutricion" class="nav-btn flex flex-col items-center py-1 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-lg">🥗</span>
+        <span class="text-[10px] mt-0.5">Nutrición</span>
+      </button>
+
+      <!-- Entrenamiento -->
+      <button onclick="cambiarTab('entreno')" id="nav-btn-entreno" class="nav-btn flex flex-col items-center py-1 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-lg">🏋️‍♂️</span>
+        <span class="text-[10px] mt-0.5">Entreno</span>
+      </button>
+
+      <!-- Progreso -->
+      <button onclick="cambiarTab('progreso')" id="nav-btn-progreso" class="nav-btn flex flex-col items-center py-1 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-lg">📈</span>
+        <span class="text-[10px] mt-0.5">Progreso</span>
+      </button>
+
+      <!-- Perfil -->
+      <button onclick="cambiarTab('perfil')" id="nav-btn-perfil" class="nav-btn flex flex-col items-center py-1 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-lg">⚙️</span>
+        <span class="text-[10px] mt-0.5">Perfil</span>
+      </button>
+
+    </div>
+  </nav>
+
+  <!-- ==================== LÓGICA JAVASCRIPT REACTIVA ==================== -->
+  <script>
+    // Estado global de la aplicación
+    let appState = {
+      config: {},
+      alimentos: [],
+      comidasHoy: [],
+      rutinaHoy: null,
+      tipoComidaActiva: 'Desayuno',
+      alimentoSeleccionado: null,
+      chartPesoInstance: null,
+      timerInterval: null
+    };
+
+    // Inicializar al cargar el DOM
+    document.addEventListener('DOMContentLoaded', () => {
+      formatearFechaActual();
+      recargarDashboard();
+      cargarBibliotecaAlimentos();
+    });
+
+    function formatearFechaActual() {
+      const opciones = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+      const hoy = new Date();
+      const str = hoy.toLocaleDateString('es-CL', opciones);
+      document.getElementById('top-date-display').textContent = str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    // -------------------------------------------------------------
+    // NAVEGACIÓN ENTRE PESTAÑAS
+    // -------------------------------------------------------------
+    function cambiarTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      const activeEl = document.getElementById('tab-' + tabId);
+      if (activeEl) activeEl.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('text-emerald-400', 'font-bold');
+        btn.classList.add('text-slate-400');
+      });
+      const activeBtn = document.getElementById('nav-btn-' + tabId);
+      if (activeBtn) {
+        activeBtn.classList.add('text-emerald-400', 'font-bold');
+        activeBtn.classList.remove('text-slate-400');
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      if (tabId === 'nutricion') cargarComidasDelDia();
+      if (tabId === 'progreso') renderizarGraficaPesos();
+      if (tabId === 'entreno') renderizarRutinaActiva();
+    }
+
+    // -------------------------------------------------------------
+    // COMUNICACIÓN CON APPS SCRIPT
+    // -------------------------------------------------------------
+    function recargarDashboard() {
+      setSyncStatus('Sincronizando...', 'amber');
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onDashboardLoaded)
+          .withFailureHandler(onError)
+          .apiGetDashboardData();
+      } else {
+        // Modo offline / simulación local para previsualización inmediata
+        console.warn('Ejecutando en entorno sin google.script.run. Usando datos de prueba.');
+        simularDashboardLocal();
+      }
+    }
+
+    function onDashboardLoaded(response) {
+      setSyncStatus('Conectado', 'emerald');
+      if (!response || !response.success) return;
+      const data = response.data;
+      appState.config = data.config || {};
+      appState.rutinaHoy = data.rutinaHoy;
+
+      // 1. Barra de peso 101 -> 80
+      const pesoIni = Number(appState.config.peso_inicio || 101.0);
+      const pesoMeta = Number(appState.config.peso_meta || 80.0);
+      const pesoAct = Number(data.pesoActual || 101.0);
+      document.getElementById('dash-peso-actual').textContent = pesoAct.toFixed(1);
+      
+      const deltaTotal = pesoIni - pesoMeta;
+      const bajados = pesoIni - pesoAct;
+      const pct = Math.min(100, Math.max(5, (bajados / deltaTotal) * 100));
+      document.getElementById('dash-progress-bar').style.width = pct + '%';
+      
+      const restantes = pesoAct - pesoMeta;
+      document.getElementById('dash-kilos-restantes').textContent = restantes > 0 ? `Faltan ${restantes.toFixed(1)} kg` : '¡Meta lograda!';
+
+      // 2. Check-in de hoy
+      if (data.registroHoy) {
+        const reg = data.registroHoy;
+        if (reg.peso_kg) document.getElementById('ci-peso').value = reg.peso_kg;
+        if (reg.horas_sueno) document.getElementById('ci-sueno').value = reg.horas_sueno;
+        if (reg.presion_sistolica) document.getElementById('ci-pres-sis').value = reg.presion_sistolica;
+        if (reg.presion_diastolica) document.getElementById('ci-pres-dia').value = reg.presion_diastolica;
+        if (reg.pasos) document.getElementById('ci-pasos').value = reg.pasos;
+        if (reg.agua_litros) document.getElementById('ci-agua').value = reg.agua_litros;
+        if (reg.energia_nivel) document.getElementById('ci-energia').value = reg.energia_nivel;
+        if (reg.estres_nivel) document.getElementById('ci-estres').value = reg.estres_nivel;
+
+        document.getElementById('checkin-badge').textContent = '✅ Registrado';
+        document.getElementById('checkin-badge').className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium';
+      }
+
+      // 3. Totales de nutrición hoy
+      const t = data.totalesHoy || { calorias: 0, proteina: 0, carbos: 0, grasas: 0 };
+      const metaCal = Number(appState.config.calorias_meta || 2200);
+      const metaProt = Number(appState.config.proteina_meta || 170);
+      const metaCarb = Number(appState.config.carbos_meta || 220);
+      const metaGras = Number(appState.config.grasas_meta || 65);
+
+      document.getElementById('dash-calorias-val').textContent = t.calorias;
+      document.getElementById('dash-proteina-val').textContent = t.proteina + 'g';
+      document.getElementById('dash-carbos-val').textContent = t.carbos + 'g';
+      document.getElementById('dash-grasas-val').textContent = t.grasas + 'g';
+
+      document.getElementById('bar-calorias').style.width = Math.min(100, (t.calorias / metaCal) * 100) + '%';
+      document.getElementById('bar-proteina').style.width = Math.min(100, (t.proteina / metaProt) * 100) + '%';
+      document.getElementById('bar-carbos').style.width = Math.min(100, (t.carbos / metaCarb) * 100) + '%';
+      document.getElementById('bar-grasas').style.width = Math.min(100, (t.grasas / metaGras) * 100) + '%';
+
+      // 4. Rutina de hoy
+      if (data.rutinaHoy) {
+        document.getElementById('dash-dia-nombre').textContent = data.rutinaHoy.dia;
+        document.getElementById('dash-sesion-titulo').textContent = data.rutinaHoy.sesion;
+        document.getElementById('dash-sesion-sub').textContent = `${data.rutinaHoy.ejercicios.length} ejercicios programados`;
+      }
+
+      // 5. Diagnóstico IA
+      if (data.diagnostico) {
+        document.getElementById('dash-diag-mensaje').textContent = data.diagnostico.mensaje;
+        document.getElementById('dash-diag-recom').innerHTML = `<span>💡 ${data.diagnostico.recomendacion}</span>`;
+      }
+
+      // Guardar historial para gráfica
+      appState.historialPesos = data.historialPesos || [];
+    }
+
+    // -------------------------------------------------------------
+    // CHECK-IN DIARIO
+    // -------------------------------------------------------------
+    function handleGuardarCheckin(e) {
+      e.preventDefault();
+      const payload = {
+        peso_kg: document.getElementById('ci-peso').value,
+        horas_sueno: document.getElementById('ci-sueno').value,
+        presion_sistolica: document.getElementById('ci-pres-sis').value,
+        presion_diastolica: document.getElementById('ci-pres-dia').value,
+        pasos: document.getElementById('ci-pasos').value,
+        agua_litros: document.getElementById('ci-agua').value,
+        energia_nivel: document.getElementById('ci-energia').value,
+        estres_nivel: document.getElementById('ci-estres').value
+      };
+
+      setSyncStatus('Guardando...', 'amber');
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            setSyncStatus('Conectado', 'emerald');
+            alert('¡Check-in diario registrado exitosamente!');
+            recargarDashboard();
+          })
+          .withFailureHandler(onError)
+          .apiSaveRegistroDiario(payload);
+      } else {
+        alert('Check-in guardado (Modo local).');
+        setSyncStatus('Conectado', 'emerald');
+      }
+    }
+
+    // -------------------------------------------------------------
+    // NUTRICIÓN & ALIMENTOS
+    // -------------------------------------------------------------
+    function seleccionarTipoComida(tipo) {
+      appState.tipoComidaActiva = tipo;
+      document.getElementById('lbl-tipo-comida-activa').textContent = tipo;
+      document.querySelectorAll('.btn-comida').forEach(b => {
+        if (b.textContent.trim().startsWith(tipo.split('/')[0])) {
+          b.className = 'btn-comida px-3.5 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold whitespace-nowrap';
+        } else {
+          b.className = 'btn-comida px-3.5 py-2 rounded-xl bg-brand-card text-slate-300 border border-brand-border whitespace-nowrap';
+        }
+      });
+    }
+
+    function cargarBibliotecaAlimentos() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            if (res.success) {
+              appState.alimentos = res.alimentos;
+              poblarSelectAlimentos();
+              poblarFavoritosRapidos();
+            }
+          })
+          .apiGetAlimentos();
+      } else {
+        appState.alimentos = [
+          { id_alimento: 'ALI-001', nombre: 'Pechuga de pollo plancha', porcion_base: 100, unidad_medida: 'g', calorias: 165, proteina_g: 31, carbos_g: 0, grasas_g: 3.6, favorito: true },
+          { id_alimento: 'ALI-002', nombre: 'Huevo entero', porcion_base: 1, unidad_medida: 'unidad', calorias: 75, proteina_g: 6.5, carbos_g: 0.5, grasas_g: 5, favorito: true },
+          { id_alimento: 'ALI-004', nombre: 'Proteína Whey (1 scoop)', porcion_base: 30, unidad_medida: 'g', calorias: 120, proteina_g: 24, carbos_g: 2, grasas_g: 1.5, favorito: true },
+          { id_alimento: 'ALI-007', nombre: 'Arroz blanco cocido', porcion_base: 100, unidad_medida: 'g', calorias: 130, proteina_g: 2.7, carbos_g: 28, grasas_g: 0.3, favorito: true },
+          { id_alimento: 'ALI-008', nombre: 'Avena tradicional', porcion_base: 50, unidad_medida: 'g', calorias: 190, proteina_g: 7, carbos_g: 33, grasas_g: 3.5, favorito: true }
+        ];
+        poblarSelectAlimentos();
+        poblarFavoritosRapidos();
+      }
+    }
+
+    function poblarSelectAlimentos() {
+      const sel = document.getElementById('sel-alimento-db');
+      sel.innerHTML = '<option value="">Selecciona un alimento...</option>';
+      appState.alimentos.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id_alimento;
+        opt.textContent = `${a.nombre} (${a.calorias} kcal / ${a.porcion_base}${a.unidad_medida})`;
+        sel.appendChild(opt);
+      });
+    }
+
+    function poblarFavoritosRapidos() {
+      const cont = document.getElementById('lista-favoritos-rapidos');
+      cont.innerHTML = '';
+      const favs = appState.alimentos.filter(a => a.favorito);
+      favs.forEach(f => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-200 transition';
+        btn.textContent = `+ ${f.nombre}`;
+        btn.onclick = () => {
+          document.getElementById('sel-alimento-db').value = f.id_alimento;
+          actualizarInfoAlimentoSeleccionado();
+          document.getElementById('inp-cantidad-alim').value = f.porcion_base;
+          calcularMacrosPreview();
+        };
+        cont.appendChild(btn);
+      });
+    }
+
+    function actualizarInfoAlimentoSeleccionado() {
+      const id = document.getElementById('sel-alimento-db').value;
+      const alim = appState.alimentos.find(a => a.id_alimento === id);
+      appState.alimentoSeleccionado = alim;
+      if (alim) {
+        document.getElementById('lbl-unidad-alim').textContent = alim.unidad_medida;
+        if (!document.getElementById('inp-cantidad-alim').value) {
+          document.getElementById('inp-cantidad-alim').value = alim.porcion_base;
+        }
+      }
+      calcularMacrosPreview();
+    }
+
+    function calcularMacrosPreview() {
+      const alim = appState.alimentoSeleccionado;
+      const cant = Number(document.getElementById('inp-cantidad-alim').value || 0);
+      if (!alim || cant <= 0) {
+        document.getElementById('prev-calorias').textContent = '0 kcal';
+        document.getElementById('prev-macros').textContent = 'P: 0g | C: 0g | G: 0g';
+        return;
+      }
+      const factor = cant / alim.porcion_base;
+      const cal = Math.round(alim.calorias * factor);
+      const prot = Math.round(alim.proteina_g * factor * 10) / 10;
+      const carb = Math.round(alim.carbos_g * factor * 10) / 10;
+      const gras = Math.round(alim.grasas_g * factor * 10) / 10;
+
+      document.getElementById('prev-calorias').textContent = `${cal} kcal`;
+      document.getElementById('prev-macros').textContent = `P: ${prot}g | C: ${carb}g | G: ${gras}g`;
+    }
+
+    function guardarComidaManual() {
+      const alim = appState.alimentoSeleccionado;
+      const cant = Number(document.getElementById('inp-cantidad-alim').value || 0);
+      if (!alim || cant <= 0) {
+        alert('Por favor selecciona un alimento y cantidad válida.');
+        return;
+      }
+
+      const factor = cant / alim.porcion_base;
+      const payload = {
+        tipo_comida: appState.tipoComidaActiva,
+        id_alimento: alim.id_alimento,
+        nombre_alimento: alim.nombre,
+        cantidad: cant,
+        unidad: alim.unidad_medida,
+        calorias_calc: alim.calorias * factor,
+        proteina_calc_g: alim.proteina_g * factor,
+        carbos_calc_g: alim.carbos_g * factor,
+        grasas_calc_g: alim.grasas_g * factor
+      };
+
+      setSyncStatus('Guardando...', 'amber');
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            setSyncStatus('Conectado', 'emerald');
+            document.getElementById('inp-cantidad-alim').value = '';
+            calcularMacrosPreview();
+            cargarComidasDelDia();
+            recargarDashboard();
+          })
+          .withFailureHandler(onError)
+          .apiSaveComidaItem(payload);
+      } else {
+        alert('Comida agregada.');
+        cargarComidasDelDia();
+      }
+    }
+
+    function cargarComidasDelDia() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            if (res.success) {
+              renderizarListaComidas(res.comidas);
+            }
+          })
+          .apiGetComidasDia();
+      }
+    }
+
+    function renderizarListaComidas(comidas) {
+      const cont = document.getElementById('lista-comidas-hoy');
+      if (!comidas || comidas.length === 0) {
+        cont.innerHTML = '<p class="text-slate-400 text-center py-4">No hay alimentos registrados hoy.</p>';
+        return;
+      }
+
+      cont.innerHTML = '';
+      comidas.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'py-3 flex items-center justify-between';
+        div.innerHTML = `
+          <div>
+            <div class="font-bold text-white text-xs">${item.nombre_alimento}</div>
+            <div class="text-[11px] text-slate-400">${item.tipo_comida} • ${item.cantidad} ${item.unidad} • <span class="text-emerald-400 font-semibold">${item.calorias_calc} kcal</span> (P: ${item.proteina_calc_g}g | C: ${item.carbos_calc_g}g | G: ${item.grasas_calc_g}g)</div>
+          </div>
+          <button onclick="eliminarComida('${item.id_comida_item}')" class="text-slate-500 hover:text-rose-400 p-1">
+            ✕
+          </button>
+        `;
+        cont.appendChild(div);
+      });
+    }
+
+    function eliminarComida(id) {
+      if (!confirm('¿Eliminar este ítem de comida?')) return;
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(() => {
+            cargarComidasDelDia();
+            recargarDashboard();
+          })
+          .apiDeleteComidaItem(id);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // ENTRENAMIENTO & SOBRECARGA PROGRESIVA
+    // -------------------------------------------------------------
+    function renderizarRutinaActiva() {
+      const rutina = appState.rutinaHoy;
+      if (!rutina) return;
+      document.getElementById('entreno-sesion-nombre').textContent = `${rutina.dia}: ${rutina.sesion}`;
+      
+      const cont = document.getElementById('lista-ejercicios-rutina');
+      cont.innerHTML = '';
+
+      if (rutina.ejercicios.length === 0) {
+        cont.innerHTML = '<div class="p-6 text-center text-slate-400 bg-brand-card rounded-2xl">Día de descanso programado. ¡Recupera tus músculos para rendir al máximo!</div>';
+        return;
+      }
+
+      rutina.ejercicios.forEach((ej, idx) => {
+        const card = document.createElement('div');
+        card.className = 'bg-brand-card border border-brand-border rounded-2xl p-5 shadow-lg space-y-3';
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-blue-400">${ej.grupo_muscular} • ${ej.tipo_carga}</span>
+              <h3 class="text-sm font-bold text-white mt-0.5">${idx + 1}. ${ej.nombre}</h3>
+            </div>
+            <span class="text-xs px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-semibold">
+              ${ej.series_objetivo} series × ${ej.reps_min}-${ej.reps_max} reps
+            </span>
+          </div>
+
+          <!-- Historial de Sobrecarga Previa -->
+          <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300 flex items-center justify-between" id="historial-${ej.id_ejercicio}">
+            <span class="text-slate-400">📊 Referencia anterior:</span>
+            <span class="font-medium text-emerald-400" id="hist-txt-${ej.id_ejercicio}">Cargando récord...</span>
+          </div>
+
+          <!-- Input Serie Activa -->
+          <div class="grid grid-cols-3 gap-2 pt-1">
+            <div class="bg-slate-900 p-2 rounded-xl border border-slate-800 text-center">
+              <label class="block text-[10px] text-slate-400">Peso (kg)</label>
+              <input type="number" step="0.5" id="ent-peso-${ej.id_ejercicio}" placeholder="50" class="w-full text-center bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+            <div class="bg-slate-900 p-2 rounded-xl border border-slate-800 text-center">
+              <label class="block text-[10px] text-slate-400">Reps</label>
+              <input type="number" id="ent-reps-${ej.id_ejercicio}" placeholder="10" class="w-full text-center bg-transparent text-base font-bold text-white focus:outline-none">
+            </div>
+            <div class="bg-slate-900 p-2 rounded-xl border border-slate-800 text-center">
+              <label class="block text-[10px] text-slate-400">RIR (0-3)</label>
+              <select id="ent-rir-${ej.id_ejercicio}" class="w-full text-center bg-transparent text-sm font-bold text-white focus:outline-none">
+                <option value="2" selected class="bg-slate-900">2 (Lejos fallo)</option>
+                <option value="1" class="bg-slate-900">1 (Justo)</option>
+                <option value="0" class="bg-slate-900">0 (Al fallo)</option>
+                <option value="3" class="bg-slate-900">3+</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-2 pt-1">
+            <button onclick="guardarSerieEntreno('${ej.id_ejercicio}', '${ej.nombre}')" class="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-xs text-white shadow-md shadow-blue-600/20 transition flex items-center justify-center space-x-1">
+              <span>✓ Registrar Serie</span>
+            </button>
+          </div>
+        `;
+        cont.appendChild(card);
+
+        // Cargar historial previo de este ejercicio
+        consultarHistorialEjercicio(ej.id_ejercicio);
+      });
+    }
+
+    function consultarHistorialEjercicio(idEjercicio) {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            const el = document.getElementById(`hist-txt-${idEjercicio}`);
+            if (el && res.success && res.todos && res.todos.length > 0) {
+              const ultimo = res.todos[res.todos.length - 1];
+              el.textContent = `${ultimo.fecha}: ${ultimo.peso_kg} kg × ${ultimo.repeticiones} reps (RIR ${ultimo.rir})`;
+              // Prellenar inputs con peso previo
+              const inpPeso = document.getElementById(`ent-peso-${idEjercicio}`);
+              if (inpPeso && !inpPeso.value) inpPeso.value = ultimo.peso_kg;
+            } else if (el) {
+              el.textContent = 'Primera sesión. Estableciendo marca base.';
+            }
+          })
+          .apiGetHistorialEjercicio(idEjercicio);
+      }
+    }
+
+    function guardarSerieEntreno(idEjercicio, nombreEj) {
+      const peso = document.getElementById(`ent-peso-${idEjercicio}`).value;
+      const reps = document.getElementById(`ent-reps-${idEjercicio}`).value;
+      const rir = document.getElementById(`ent-rir-${idEjercicio}`).value;
+
+      if (!peso || !reps) {
+        alert('Ingresa el peso y las repeticiones completadas.');
+        return;
+      }
+
+      const payload = {
+        dia_sesion: appState.rutinaHoy ? appState.rutinaHoy.sesion : 'Entreno',
+        id_ejercicio: idEjercicio,
+        numero_serie: 1,
+        peso_kg: peso,
+        repeticiones: reps,
+        rir: rir
+      };
+
+      setSyncStatus('Guardando...', 'amber');
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            setSyncStatus('Conectado', 'emerald');
+            // Iniciar descanso automático de 90 seg
+            startTimer(90);
+            alert(`¡Serie de ${nombreEj} (${peso}kg × ${reps} reps) guardada!`);
+            consultarHistorialEjercicio(idEjercicio);
+          })
+          .withFailureHandler(onError)
+          .apiSaveSerieEntrenamiento(payload);
+      } else {
+        startTimer(90);
+        alert(`Serie guardada localmente.`);
+      }
+    }
+
+    // Cronómetro de Descanso
+    function startTimer(seconds) {
+      clearInterval(appState.timerInterval);
+      let rem = seconds;
+      actualizarTimerDisplay(rem);
+      appState.timerInterval = setInterval(() => {
+        rem--;
+        if (rem <= 0) {
+          clearInterval(appState.timerInterval);
+          actualizarTimerDisplay(0);
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+          alert('¡Tiempo de descanso finalizado! Siguiente serie.');
+        } else {
+          actualizarTimerDisplay(rem);
+        }
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(appState.timerInterval);
+      actualizarTimerDisplay(0);
+    }
+
+    function actualizarTimerDisplay(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      document.getElementById('timer-display').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // -------------------------------------------------------------
+    // GRÁFICAS DE PROGRESO
+    // -------------------------------------------------------------
+    function renderizarGraficaPesos() {
+      const ctx = document.getElementById('chart-peso').getContext('2d');
+      const datos = appState.historialPesos || [];
+
+      const labels = datos.map(d => d.fecha.substring(5)); // MM-DD
+      const pesos = datos.map(d => d.peso_kg);
+
+      if (appState.chartPesoInstance) {
+        appState.chartPesoInstance.destroy();
+      }
+
+      appState.chartPesoInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels.length ? labels : ['Día 1'],
+          datasets: [{
+            label: 'Peso Corporal (kg)',
+            data: pesos.length ? pesos : [101.0],
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 3,
+            pointBackgroundColor: '#10B981',
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              grid: { color: '#222F43' },
+              ticks: { color: '#94A3B8' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#94A3B8' }
+            }
+          }
+        }
+      });
+
+      cargarMedidasHistoricas();
+    }
+
+    function handleGuardarMedidas(e) {
+      e.preventDefault();
+      const payload = {
+        cintura_ombligo_cm: document.getElementById('med-cintura').value,
+        pecho_cm: document.getElementById('med-pecho').value,
+        brazo_der_cm: document.getElementById('med-brazo').value,
+        muslo_der_cm: document.getElementById('med-muslo').value,
+        comentarios: document.getElementById('med-notas').value
+      };
+
+      setSyncStatus('Guardando...', 'amber');
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            setSyncStatus('Conectado', 'emerald');
+            alert('¡Medidas guardadas con éxito!');
+            cargarMedidasHistoricas();
+          })
+          .apiSaveMedida(payload);
+      }
+    }
+
+    function cargarMedidasHistoricas() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            if (res.success && res.medidas) {
+              const cont = document.getElementById('lista-medidas-previas');
+              cont.innerHTML = '';
+              res.medidas.slice(-5).reverse().forEach(m => {
+                const row = document.createElement('div');
+                row.className = 'py-2 flex justify-between items-center';
+                row.innerHTML = `
+                  <div>
+                    <span class="font-bold text-white">${m.fecha}</span>
+                    <span class="text-slate-400 ml-2">Cintura: <strong class="text-emerald-400">${m.cintura_ombligo_cm || '--'} cm</strong></span>
+                  </div>
+                  <span class="text-slate-500 text-[11px]">${m.comentarios || ''}</span>
+                `;
+                cont.appendChild(row);
+              });
+            }
+          })
+          .apiGetMedidas();
+      }
+    }
+
+    // -------------------------------------------------------------
+    // SETUP Y UTILIDADES
+    // -------------------------------------------------------------
+    function ejecutarSetupSheets() {
+      if (!confirm('¿Deseas verificar e inicializar las 9 hojas en tu Google Sheets?')) return;
+      const btn = document.getElementById('btn-setup');
+      btn.textContent = 'Inicializando... por favor espera';
+      btn.disabled = true;
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((res) => {
+            btn.textContent = 'Verificar / Inicializar Tablas en Sheets';
+            btn.disabled = false;
+            alert(res.message);
+            recargarDashboard();
+          })
+          .withFailureHandler((err) => {
+            btn.textContent = 'Error';
+            btn.disabled = false;
+            onError(err);
+          })
+          .setupSheets();
+      }
+    }
+
+    function setSyncStatus(text, color) {
+      const el = document.getElementById('sync-status');
+      if (!el) return;
+      el.innerHTML = `<span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-${color}-400"></span> ${text}`;
+    }
+
+    function onError(err) {
+      setSyncStatus('Error', 'rose');
+      console.error(err);
+      alert('Ocurrió un error en la conexión: ' + (err.message || err));
+    }
+
+    function simularDashboardLocal() {
+      onDashboardLoaded({
+        success: true,
+        data: {
+          config: { peso_inicio: 101.0, peso_meta: 80.0, calorias_meta: 2200, proteina_meta: 170, carbos_meta: 220, grasas_meta: 65 },
+          pesoActual: 101.0,
+          pesoMeta: 80.0,
+          registroHoy: null,
+          totalesHoy: { calorias: 0, proteina: 0, carbos: 0, grasas: 0 },
+          rutinaHoy: {
+            dia: 'Lunes',
+            sesion: 'Torso Fuerza A (Pecho/Espalda)',
+            ejercicios: [
+              { id_ejercicio: 'EJ-001', nombre: 'Press Plano con Mancuernas', grupo_muscular: 'Pecho', tipo_carga: 'Mancuerna', series_objetivo: 3, reps_min: 8, reps_max: 12 },
+              { id_ejercicio: 'EJ-004', nombre: 'Jalón al Pecho en Polea', grupo_muscular: 'Espalda', tipo_carga: 'Polea', series_objetivo: 3, reps_min: 8, reps_max: 12 },
+              { id_ejercicio: 'EJ-002', nombre: 'Press Inclinado con Mancuernas', grupo_muscular: 'Pecho', tipo_carga: 'Mancuerna', series_objetivo: 3, reps_min: 10, reps_max: 12 },
+              { id_ejercicio: 'EJ-005', nombre: 'Remo con Mancuerna a 1 Brazo', grupo_muscular: 'Espalda', tipo_carga: 'Mancuerna', series_objetivo: 3, reps_min: 10, reps_max: 12 },
+              { id_ejercicio: 'EJ-013', nombre: 'Extensión Tríceps Polea Cuerda', grupo_muscular: 'Tríceps', tipo_carga: 'Polea', series_objetivo: 3, reps_min: 12, reps_max: 15 }
+            ]
+          },
+          historialPesos: [{ fecha: '2026-10-05', peso_kg: 101.0 }],
+          diagnostico: {
+            mensaje: 'Punto de partida establecido en 101.0 kg. El motor calculará el ritmo promedio al acumular los primeros pesajes.',
+            recomendacion: 'Mantener 2.200 kcal y 170g de proteína base.'
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
