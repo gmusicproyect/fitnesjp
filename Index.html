@@ -416,6 +416,28 @@
         </div>
       </div>
 
+      <!-- Música YouTube dentro de la app -->
+      <div class="bg-brand-card border border-brand-border rounded-2xl p-4 shadow-lg space-y-3">
+        <button type="button" onclick="document.getElementById('yt-body').classList.toggle('hidden')" class="w-full flex items-center justify-between text-sm font-bold text-white">
+          <span>🎵 Música (YouTube)</span><span id="yt-estado" class="text-slate-400 text-xs">pega tu playlist</span>
+        </button>
+        <div id="yt-body" class="space-y-3">
+          <div class="flex gap-2">
+            <input id="yt-link" type="url" inputmode="url" autocomplete="off" placeholder="Link de YouTube (playlist o video)" class="flex-1 min-w-0 bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+            <button type="button" onclick="ytCargarDesdeInput()" class="px-3 py-2 text-xs font-semibold rounded-lg bg-rose-600/30 text-rose-200 border border-rose-500/40">Cargar</button>
+          </div>
+          <div id="yt-zona" class="hidden space-y-3">
+            <div class="rounded-xl overflow-hidden bg-black relative w-full" style="aspect-ratio:16/9"><div id="yt-player" class="absolute inset-0 w-full h-full"></div></div>
+            <div class="flex items-center justify-center gap-4">
+              <button type="button" onclick="ytControl('prev')" class="w-14 h-12 text-2xl rounded-xl bg-slate-800 text-white">⏮</button>
+              <button type="button" onclick="ytControl('toggle')" id="yt-btn-play" class="w-20 h-12 text-2xl rounded-xl bg-rose-600/40 text-white">▶️</button>
+              <button type="button" onclick="ytControl('next')" class="w-14 h-12 text-2xl rounded-xl bg-slate-800 text-white">⏭</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400">iPhone: la primera vez toca ▶️ (no deja reproducir solo). La voz y los pitidos suenan encima de la música. Si bloqueas la pantalla o sales de la app, YouTube se pausa.</p>
+        </div>
+      </div>
+
       <!-- Temporizador rápido (intervalos) -->
       <div class="bg-brand-card border border-brand-border rounded-2xl p-4 shadow-lg space-y-3">
         <button type="button" onclick="document.getElementById('qt-body').classList.toggle('hidden')" class="w-full flex items-center justify-between text-sm font-bold text-white">
@@ -1483,8 +1505,12 @@
     let clipsCargando = false;
     // iPhone: 'ambient' = los sonidos de la app se MEZCLAN con tu podcast/música en vez de pausarlos.
     // Debe fijarse antes de que suene cualquier cosa, por eso se llama también al cargar la página.
+    // Si la música suena DENTRO de la app (YouTube) se usa 'playback': suena aunque el iPhone esté en silencio
+    // y la voz se mezcla con ella porque es la misma app.
+    let musicaInterna = false;
     function fijarAudioAmbiente() {
-      try { if (navigator.audioSession && navigator.audioSession.type !== 'ambient') navigator.audioSession.type = 'ambient'; } catch (e) {}
+      const tipo = musicaInterna ? 'playback' : 'ambient';
+      try { if (navigator.audioSession && navigator.audioSession.type !== tipo) navigator.audioSession.type = tipo; } catch (e) {}
     }
     fijarAudioAmbiente();
     function diagnosticoAudio() {
@@ -1559,6 +1585,88 @@
       else if (modoSonido === 'pitidos') { avisoRapido('Solo pitidos · ' + diagnosticoAudio()); beep(800, 150); }
       else avisoRapido('Silencio');
     }
+
+    // ---- Música YouTube dentro de la app ----
+    let ytPlayer = null, ytApiLista = false, ytPendiente = null;
+    function ytParsear(url) {
+      url = String(url || '').trim();
+      if (!url) return null;
+      let m = url.match(/[?&]list=([A-Za-z0-9_-]+)/);
+      const list = m ? m[1] : null;
+      m = url.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/);
+      const vid = m ? m[1] : null;
+      if (!list && !vid) return null;
+      return { list: list, vid: vid };
+    }
+    function ytSetEstado(t) { const e = document.getElementById('yt-estado'); if (e) e.textContent = t; }
+    function ytCargarApi() {
+      if (window.YT && window.YT.Player) { ytApiLista = true; return; }
+      if (document.getElementById('yt-api')) return;
+      const sc = document.createElement('script');
+      sc.id = 'yt-api';
+      sc.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(sc);
+    }
+    window.onYouTubeIframeAPIReady = function () {
+      ytApiLista = true;
+      if (ytPendiente) { const p = ytPendiente; ytPendiente = null; ytMontar(p); }
+    };
+    function ytMontar(p) {
+      if (!ytApiLista && !(window.YT && window.YT.Player)) { ytPendiente = p; ytSetEstado('cargando…'); ytCargarApi(); return; }
+      ytApiLista = true;
+      document.getElementById('yt-zona').classList.remove('hidden');
+      if (ytPlayer && ytPlayer.cuePlaylist) {
+        if (p.list) ytPlayer.cuePlaylist({ list: p.list, listType: 'playlist', index: 0 });
+        else ytPlayer.cueVideoById(p.vid);
+        ytSetEstado('listo · toca ▶️');
+        return;
+      }
+      const vars = { playsinline: 1, rel: 0, modestbranding: 1 };
+      if (p.list) { vars.listType = 'playlist'; vars.list = p.list; }
+      const opts = {
+        width: '100%', height: '100%', playerVars: vars,
+        events: {
+          onReady: () => ytSetEstado('listo · toca ▶️'),
+          onStateChange: (ev) => {
+            const b = document.getElementById('yt-btn-play');
+            if (ev.data === 1) { ytSetEstado('▶ sonando'); if (b) b.textContent = '⏸'; musicaInterna = true; fijarAudioAmbiente(); }
+            else if (ev.data === 2) { ytSetEstado('en pausa'); if (b) b.textContent = '▶️'; }
+            else if (ev.data === 0) { ytSetEstado('terminó'); if (b) b.textContent = '▶️'; }
+          },
+          onError: (ev) => {
+            const c = ev && ev.data;
+            ytSetEstado(c === 101 || c === 150 ? 'este video no permite verse fuera de YouTube' : 'no se pudo reproducir (código ' + c + ')');
+            if (ytPlayer && (c === 101 || c === 150 || c === 100) && ytPlayer.nextVideo) setTimeout(() => { try { ytPlayer.nextVideo(); } catch (e) {} }, 1500);
+          }
+        }
+      };
+      if (p.vid) opts.videoId = p.vid;
+      ytPlayer = new YT.Player('yt-player', opts);
+    }
+    function ytCargarDesdeInput() {
+      const inp = document.getElementById('yt-link');
+      const p = ytParsear(inp && inp.value);
+      if (!p) { ytSetEstado('link no válido'); avisoRapido('Pega un link de YouTube (playlist o video)'); return; }
+      try { localStorage.setItem('jp_yt', inp.value.trim()); } catch (e) {}
+      prepararAudio(); // desbloquea el audio de la app con este toque
+      ytMontar(p);
+    }
+    function ytControl(acc) {
+      if (!ytPlayer || !ytPlayer.getPlayerState) return;
+      try {
+        if (acc === 'prev') ytPlayer.previousVideo();
+        else if (acc === 'next') ytPlayer.nextVideo();
+        else if (ytPlayer.getPlayerState() === 1) ytPlayer.pauseVideo();
+        else { prepararAudio(); ytPlayer.playVideo(); }
+      } catch (e) {}
+    }
+    function ytIniciar() {
+      let guardado = '';
+      try { guardado = localStorage.getItem('jp_yt') || ''; } catch (e) {}
+      const inp = document.getElementById('yt-link');
+      if (inp && guardado) { inp.value = guardado; const p = ytParsear(guardado); if (p) ytMontar(p); }
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ytIniciar); else ytIniciar();
 
     // ---- Pantalla encendida durante el entrenamiento ----
     const NOSLEEP_B64 = 'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAM4bW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAmJ0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHabWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAKABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABhW1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAUVzdGJsAAAAuXN0c2QAAAAAAAAAAQAAAKlhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP~~AAAAL2F2Y0MBQsAK~+EAF2dCwArZBCbARAAAAwAEAAADACg8SJkgAQAFaMuDyyAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAVqAAAFagAAAAYc3R0cwAAAAAAAAABAAAABQAACAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAABQAAAAEAAAAoc3RzegAAAAAAAAAAAAAABQAAAowAAAAKAAAACwAAAAoAAAAKAAAAFHN0Y28AAAAAAAAAAQAAA2gAAABidWR0YQAAAFptZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAAC1pbHN0AAAAJal0b28AAAAdZGF0YQAAAAEAAAAATGF2ZjYwLjE2LjEwMAAAAAhmcmVlAAACvW1kYXQAAAJtBgX~~2ncRem95tlIt5Ys2CDZI+7veDI2NCAtIGNvcmUgMTY0IHIzMTA4IDMxZTE5ZjkgLSBILjI2NC9NUEVHLTQgQVZDIGNvZGVjIC0gQ29weWxlZnQgMjAwMy0yMDIzIC0gaHR0cDovL3d3dy52aWRlb2xhbi5vcmcveDI2NC5odG1sIC0gb3B0aW9uczogY2FiYWM9MCByZWY9MyBkZWJsb2NrPTE6MDowIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MiBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD01IGtleWludF9taW49MSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTUgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAF2WIhAR8mKAANiMnJyddddddddddddeAAAAABkGaOAj4RgAAAAdBmlQCPhGAAAAABkGaYBDwjAAAAAZBmoA~wjA=';
