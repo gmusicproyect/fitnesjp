@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prueba de audio</title>
+<style>
+:root{--bg:#0b0f17;--fg:#f1f5f9;--mut:#94a3b8;--ok:#22c55e;--btn:#2563eb}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,system-ui,sans-serif;padding:20px 16px}
+h1{font-size:22px;margin:0 0 6px}p{color:var(--mut);margin:6px 0}
+ol{padding-left:20px}li{margin:6px 0}
+button{display:block;width:100%;margin:12px 0;padding:18px;border:0;border-radius:14px;background:var(--btn);color:#fff;font-size:18px;font-weight:800}
+#diag{margin-top:16px;padding:12px;border-radius:12px;background:#111827;font:14px ui-monospace,monospace;white-space:pre-wrap}
+</style></head><body>
+<h1>Prueba: ¿se mezcla el audio?</h1>
+<p>Esta página está fuera de Apps Script. Sirve para saber si el iPhone deja mezclar los pitidos con tu música.</p>
+<ol>
+<li>Pon tu podcast o tu playlist en YouTube Music / Spotify.</li>
+<li>Vuelve aquí y toca <b>Probar pitidos</b>.</li>
+<li>Fíjate si tu música <b>sigue sonando</b> o se pausa.</li>
+</ol>
+<button id="b">🔔 Probar pitidos</button>
+<div id="diag"></div>
+<script>
+function fijar(){try{if(navigator.audioSession)navigator.audioSession.type='ambient';}catch(e){}}
+fijar();
+let ctx=null;
+function diag(){
+  let t='no disponible';try{if(navigator.audioSession)t=navigator.audioSession.type+' · estado '+(navigator.audioSession.state||'?');}catch(e){}
+  let marco='página principal';try{if(window.self!==window.top)marco='dentro de un marco';}catch(e){marco='dentro de un marco';}
+  document.getElementById('diag').textContent='Audio iOS: '+t+'\nUbicación: '+marco+'\nMotor de audio: '+(ctx?ctx.state:'sin activar')+'\n'+navigator.userAgent.replace(/\) .*/,')');
+}
+function pit(f,t0,d){const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=f;g.gain.value=.2;o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+t0);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t0+d);o.stop(ctx.currentTime+t0+d);}
+document.getElementById('b').onclick=async()=>{
+  fijar();
+  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
+  try{await ctx.resume();}catch(e){}
+  pit(880,0,.25);pit(880,.5,.25);pit(1320,1,.5);
+  setTimeout(diag,300);
+};
+diag();
+</script>
+</body></html>
