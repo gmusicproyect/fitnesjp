@@ -1423,6 +1423,7 @@
           s.abierto = p;
         }
         renderTodas();
+        if (guia.activo && guia.pantalla !== 'serie' && !guia.panel) guiaRender(false);
       };
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run
@@ -1891,7 +1892,7 @@
     // MODO ENTRENAMIENTO GUIADO: Serie → Descanso → Prepárate → Serie...
     // =============================================================
     const GUIA_PREP_SEG = 10; // segundos para prepararse antes de un ejercicio nuevo
-    const guia = { activo: false, idx: 0, sig: null, pantalla: 'serie', peso: '', reps: '', rir: '2', guardando: false };
+    const guia = { activo: false, idx: 0, sig: null, pantalla: 'serie', peso: '', reps: '', rir: '2', guardando: false, panel: false };
     function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function sigPendiente(desde) {
       const l = ejs();
@@ -2032,20 +2033,23 @@
           if (sig && guia.sig === guia.idx) {
             const n = Math.min(ejHechas(sig.id_ejercicio).length + 1, ejObjetivo(sig));
             info = `<div class="text-xs uppercase tracking-widest text-slate-400">Siguiente</div>
-              <div class="text-lg font-bold">Serie ${n} de ${ejObjetivo(sig)} · ${esc(sig.nombre)}</div>`;
+              <div class="text-lg font-bold">Serie ${n} de ${ejObjetivo(sig)} · ${esc(sig.nombre)}</div>
+              ${guiaPanelCambio(guia.sig)}`;
           } else if (sig) {
             const v = guiaSugerencia(sig);
             info = `<div class="text-xs uppercase tracking-widest text-slate-400">Siguiente ejercicio</div>
               <div class="text-xl font-black">${esc(sig.nombre)}</div>
               ${guiaGif(sig, 'w-28 h-28')}
               <div class="text-sm text-slate-300">${ejObjetivo(sig)} series${v.peso !== '' ? ` · sugerido ${esc(v.peso)} kg` : ''}</div>
-              <div class="text-xs text-amber-300">Al terminar el descanso tendrás ${GUIA_PREP_SEG} s para ir a la máquina o tomar las mancuernas</div>`;
+              <div class="text-xs text-amber-300">Al terminar el descanso tendrás ${GUIA_PREP_SEG} s para ir a la máquina o tomar las mancuernas</div>
+              ${guiaPanelCambio(guia.sig)}`;
           }
         } else if (esPrep) {
           const v = guiaSugerencia(ej);
           info = `<div class="text-2xl font-black">${esc(ej.nombre)}</div>
             ${guiaGif(ej, 'w-40 h-40')}
-            <div class="text-sm text-slate-300">${esc(ej.grupo_muscular)} · ${esc(ej.tipo_carga)}${v.peso !== '' ? ` · sugerido ${esc(v.peso)} kg` : ''}</div>`;
+            <div class="text-sm text-slate-300">${esc(ej.grupo_muscular)} · ${esc(ej.tipo_carga)}${v.peso !== '' ? ` · sugerido ${esc(v.peso)} kg` : ''}</div>
+            ${guiaPanelCambio(guia.idx)}`;
         } else {
           info = `<div class="text-2xl font-black">${esc(ej.nombre)}</div>`;
         }
@@ -2135,16 +2139,93 @@
       const fases = [{ label: 'Descanso', voz: 'Descanso', seconds: seg, tipo: 'descanso' }];
       if (cambia) fases.push({ label: 'Prepárate: ' + (sigEj ? sigEj.nombre : ''), voz: 'Prepárate', seconds: GUIA_PREP_SEG, tipo: 'prep' });
       guiaRender(true);
+      guia.panel = false;
       ejecutarFases(fases, {
         vozFin: cambia ? 'Empezamos' : 'Descanso terminado. Siguiente serie',
         alCambiar: (f) => {
-          if (f.tipo === 'prep') { guia.idx = sig; guia.pantalla = 'prep'; guiaCargarValores(); guiaRender(true); }
+          if (f.tipo === 'prep') { guia.idx = guia.sig; guia.pantalla = 'prep'; guia.panel = false; guiaCargarValores(); guiaRender(true); }
         },
         alTerminar: () => {
-          guia.idx = sig; guia.pantalla = 'serie'; guiaCargarValores(); guiaRender(true);
+          guia.idx = guia.sig; guia.pantalla = 'serie'; guia.panel = false; guiaCargarValores(); guiaRender(true);
         }
       });
     }
+    // ---- Cambiar lo que sigue durante el descanso / prepárate ----
+    // t = índice del ejercicio que viene. Ofrece: alternativas para el mismo músculo (máquina ocupada),
+    // un ejercicio libre, o hacer antes otro ejercicio pendiente de la rutina.
+    function guiaPanelCambio(t) {
+      const l = ejs();
+      const ej = l[t];
+      if (!ej) return '';
+      const btn = `<button type="button" onclick="guia.panel=!guia.panel; guiaRender(false)" class="w-full mt-2 py-3 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-sm font-bold">${guia.panel ? '▴ Cerrar opciones' : '🔁 ¿Máquina ocupada? Cambiar lo que sigue'}</button>`;
+      if (!guia.panel) return btn;
+      const sinSeries = ejHechas(ej.id_ejercicio).length === 0;
+      let h = '';
+      if (sinSeries) {
+        const enUso = new Set(l.map(e => e.id_ejercicio));
+        const opciones = (ej.alternativas || []).filter(a => !enUso.has(a.id_ejercicio) || (ej.original && a.id_ejercicio === ej.original.id_ejercicio));
+        h += `<div class="text-left text-[11px] font-bold uppercase tracking-wider text-amber-300 mt-3">Mismo músculo (${esc((ej.original || ej).grupo_muscular)})</div>`;
+        h += opciones.length ? opciones.map(a => {
+          const esOrig = ej.original && a.id_ejercicio === ej.original.id_ejercicio;
+          return `<button type="button" onclick="guiaUsarAlt(${t}, '${esc(a.id_ejercicio)}')" class="w-full text-left p-3 rounded-xl bg-slate-900 border border-slate-700 active:border-amber-400">
+            <div class="text-sm font-bold text-white">${esOrig ? '↩ Volver a ' : ''}${esc(a.nombre)}</div>
+            <div class="text-[11px] text-slate-400">${esc(a.tipo_carga)}</div></button>`;
+        }).join('') : `<div class="text-xs text-slate-500 text-left">No hay alternativas guardadas para este ejercicio.</div>`;
+        h += `<div class="flex gap-2"><input id="guia-ext" type="text" maxlength="60" placeholder="Otro (escribe el nombre)" class="flex-1 min-w-0 px-3 py-3 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white">
+          <button type="button" onclick="guiaUsarLibre(${t})" class="px-4 rounded-xl bg-amber-600 text-sm font-bold">Usar</button></div>`;
+      }
+      const otros = l.map((e, j) => ({ e: e, j: j })).filter(o => o.j !== t && !ejHecho(o.e));
+      if (otros.length) {
+        h += `<div class="text-left text-[11px] font-bold uppercase tracking-wider text-blue-300 mt-3">O haz antes otro de la rutina</div>`;
+        h += otros.map(o => `<button type="button" onclick="guiaElegirSiguiente(${o.j})" class="w-full text-left p-3 rounded-xl bg-slate-900 border border-slate-700 active:border-blue-400">
+            <div class="text-sm font-bold text-white">${esc(o.e.nombre)}</div>
+            <div class="text-[11px] text-slate-400">${esc(o.e.grupo_muscular)} · ${ejHechas(o.e.id_ejercicio).length}/${ejObjetivo(o.e)} series</div></button>`).join('');
+      }
+      return btn + `<div class="space-y-2 mt-2">${h}</div>`;
+    }
+    function guiaTrasCambio() {
+      guia.panel = false;
+      if (guia.pantalla === 'prep') guiaCargarValores();
+      guiaRender(true);
+    }
+    function guiaUsarAlt(t, altId) {
+      cambiarEjercicio(t, altId);
+      guiaTrasCambio();
+    }
+    function guiaUsarLibre(t) {
+      const inp = document.getElementById('guia-ext');
+      const nombre = inp ? inp.value.replace(/\s+/g, ' ').trim() : '';
+      if (nombre.length < 3) { avisoRapido('Escribe el nombre del ejercicio'); return; }
+      cambiarEjercicio(t, 'EXT:' + nombre.slice(0, 60));
+      guiaTrasCambio();
+    }
+    // Cambia cuál ejercicio viene después del descanso (o el que se está preparando).
+    function guiaElegirSiguiente(j) {
+      const l = ejs();
+      if (!l[j]) return;
+      const pl = planFases;
+      if (guia.pantalla === 'prep') {
+        guia.idx = j; guia.sig = j;
+      } else if (guia.pantalla === 'descanso') {
+        guia.sig = j;
+        // Si antes seguía otra serie del mismo ejercicio, ahora hace falta el "Prepárate" de 10 s
+        if (pl && j !== guia.idx && !pl.fases.some(f => f.tipo === 'prep')) {
+          const ini = pl.fin, fin = ini + GUIA_PREP_SEG * 1000;
+          pl.fases.push({ label: 'Prepárate: ' + l[j].nombre, voz: 'Prepárate', seconds: GUIA_PREP_SEG, tipo: 'prep', ini: ini, fin: fin });
+          pl.fin = fin;
+          pl.opc.vozFin = 'Empezamos';
+        }
+        // Si vuelve a ser el mismo ejercicio, se quita el "Prepárate"
+        if (pl && j === guia.idx && pl.fases.length > 1 && pl.fases[pl.fases.length - 1].tipo === 'prep' && pl.actual < pl.fases.length - 1) {
+          const quitado = pl.fases.pop();
+          pl.fin -= (quitado.fin - quitado.ini);
+          pl.opc.vozFin = 'Descanso terminado. Siguiente serie';
+        }
+      }
+      avisoRapido('Siguiente: ' + l[j].nombre);
+      guiaTrasCambio();
+    }
+
     function guiaTrabajoTiempo() {
       const ej = ejs()[guia.idx];
       if (!ej || !esTiempo(ej)) return;
