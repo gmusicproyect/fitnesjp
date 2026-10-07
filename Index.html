@@ -34,6 +34,10 @@
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     input[type=number]::-webkit-inner-spin-button, 
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    /* Modo guiado: cada pantalla entra deslizándose desde la derecha */
+    @keyframes guiaIn { from { transform: translateX(55%); opacity: 0; } to { transform: none; opacity: 1; } }
+    .guia-slide { animation: guiaIn .35s ease-out; }
+    .guia-reloj { font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
   </style>
 </head>
 <body class="bg-brand-dark text-slate-100 min-h-screen pb-24 md:pb-8 font-sans antialiased selection:bg-brand-accent selection:text-slate-900">
@@ -1325,6 +1329,9 @@
       const pr = document.getElementById('ses-progreso');
       if (pr) {
         const pct = totalSeries ? Math.round(hechasTot / totalSeries * 100) : 0;
+        const bg = document.getElementById('btn-guia');
+        if (bg) bg.textContent = hechasTot === 0 ? '▶ Comenzar entrenamiento del día'
+          : (hechasTot >= totalSeries ? '✓ Sesión completa' : `▶ Continuar entrenamiento (${hechasTot}/${totalSeries} series)`);
         pr.innerHTML = `<div class="flex items-center justify-between text-[11px] text-slate-400 mb-1"><span>Progreso de la sesión</span><span>${hechasTot}/${totalSeries} series · ${pct}%</span></div><div class="h-2 rounded-full bg-slate-800 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${pct}%"></div></div>`;
       }
       l.forEach((ej, i) => renderTarjetaEj(i));
@@ -1348,6 +1355,13 @@
       const pr = document.createElement('div');
       pr.id = 'ses-progreso';
       pr.className = 'bg-brand-card border border-brand-border rounded-2xl p-3';
+      const bg = document.createElement('button');
+      bg.type = 'button';
+      bg.id = 'btn-guia';
+      bg.onclick = guiaComenzar;
+      bg.className = 'w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-base font-black shadow-lg shadow-emerald-600/20';
+      bg.textContent = '▶ Comenzar entrenamiento del día';
+      cont.appendChild(bg);
       cont.appendChild(pr);
       rutina.ejercicios.forEach((ej) => {
         const box = document.createElement('div');
@@ -1434,16 +1448,18 @@
       }
     }
 
-    function registrarSerie(idx) {
+    // vals/alGuardar los usa el modo guiado: valores propios y aviso al terminar (alGuardar(ok, info)).
+    function registrarSerie(idx, vals, alGuardar) {
       const s = appState.ses;
       const ej = ejs()[idx];
-      if (!ej || s.guardando) return;
+      if (!ej || s.guardando) { if (alGuardar) alGuardar(false); return; }
       const id = ej.id_ejercicio;
-      const peso = document.getElementById('ent-peso-' + id).value;
-      const reps = document.getElementById('ent-reps-' + id).value;
-      const rir = document.getElementById('ent-rir-' + id).value;
+      const peso = vals ? String(vals.peso) : document.getElementById('ent-peso-' + id).value;
+      const reps = vals ? String(vals.reps) : document.getElementById('ent-reps-' + id).value;
+      const rir = vals ? String(vals.rir) : document.getElementById('ent-rir-' + id).value;
       if (peso === '' || reps === '') {
         avisoRapido('Ingresa el peso y las repeticiones');
+        if (alGuardar) alGuardar(false);
         return;
       }
       const nSerie = ejHechas(id).length + 1;
@@ -1473,6 +1489,11 @@
         const sesionCompleta = completo && sigue === null;
         if (completo) s.abierto = sigue;
         renderTodas();
+        if (alGuardar) {
+          avisoRapido(`✓ ${ej.nombre}: ${peso} kg × ${reps} guardada`);
+          alGuardar(true, { completo: completo, sigue: sigue, sesionCompleta: sesionCompleta });
+          return;
+        }
         if (completo && sigue !== null) scrollAEjercicio(sigue);
         if (sesionCompleta) {
           avisoRapido('🎉 ¡Sesión completa!');
@@ -1485,10 +1506,10 @@
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run
           .withSuccessHandler((res) => {
-            if (res && res.success === false) { s.guardando = false; setSyncStatus('Error', 'rose'); avisoRapido('No se pudo guardar: ' + (res.error || '')); return; }
+            if (res && res.success === false) { s.guardando = false; setSyncStatus('Error', 'rose'); avisoRapido('No se pudo guardar: ' + (res.error || '')); if (alGuardar) alGuardar(false); return; }
             despues();
           })
-          .withFailureHandler((e) => { s.guardando = false; onError(e); })
+          .withFailureHandler((e) => { s.guardando = false; onError(e); if (alGuardar) alGuardar(false); })
           .apiSaveSerieEntrenamiento(payload);
       } else {
         despues();
@@ -1803,12 +1824,14 @@
         box.style.borderColor = fase.tipo === 'trabajo' ? '#10B981' : (fase.tipo === 'prep' ? '#F59E0B' : '#3B82F6');
       }
       actualizarTimerDisplay(rem);
+      guiaPintarReloj(fase, rem);
     }
 
     // fases: [{label, voz, seconds, tipo: 'prep' | 'trabajo' | 'descanso'}]
     // Las fases usan horas absolutas: si el celular se bloquea, al volver el cronómetro muestra el punto correcto.
     let planFases = null;
-    function ejecutarFases(fases) {
+    // opc (opcional): { alCambiar(fase, i), alTerminar(), vozFin }
+    function ejecutarFases(fases, opc) {
       clearInterval(appState.timerInterval);
       if (!fases.length) return;
       appState.sesionActiva = true;
@@ -1816,7 +1839,7 @@
       pedirWakeLock();
       let t = Date.now();
       fases.forEach(f => { f.ini = t; t += f.seconds * 1000; f.fin = t; });
-      planFases = { fases: fases, actual: -1, ultimoRem: -1, fin: t };
+      planFases = { fases: fases, actual: -1, ultimoRem: -1, fin: t, opc: opc || {} };
       tickFases();
       appState.timerInterval = setInterval(tickFases, 250);
     }
@@ -1837,7 +1860,9 @@
         const box = document.getElementById('rest-timer-box');
         if (box) box.style.borderColor = '';
         vibrar([200, 100, 200, 100, 300]);
-        if (!hablar(fases.length === 1 && fases[0].tipo === 'descanso' ? 'Descanso terminado. Siguiente serie' : 'Terminamos. Buen trabajo')) beep(1200, 400);
+        const vozFin = pl.opc.vozFin || (fases.length === 1 && fases[0].tipo === 'descanso' ? 'Descanso terminado. Siguiente serie' : 'Terminamos. Buen trabajo');
+        if (!hablar(vozFin)) beep(1200, 400);
+        if (pl.opc.alTerminar) { try { pl.opc.alTerminar(); } catch (e) {} }
         return;
       }
       let i = pl.actual < 0 ? 0 : pl.actual;
@@ -1847,6 +1872,7 @@
       if (i !== pl.actual) {
         pl.actual = i;
         pl.ultimoRem = rem;
+        if (pl.opc.alCambiar) { try { pl.opc.alCambiar(f, i); } catch (e) {} }
         pintarFase(f, rem);
         vibrar(f.tipo === 'trabajo' ? [300] : [150, 80, 150]);
         if (!hablar(f.voz || f.label)) beep(f.tipo === 'trabajo' ? 1000 : 600, 250);
@@ -1859,6 +1885,281 @@
         else if (rem === 10 && f.seconds >= 25) hablar('Diez segundos');
         else if (rem === 5 && f.seconds >= 12) hablar('5');
       }
+    }
+
+    // =============================================================
+    // MODO ENTRENAMIENTO GUIADO: Serie → Descanso → Prepárate → Serie...
+    // =============================================================
+    const GUIA_PREP_SEG = 10; // segundos para prepararse antes de un ejercicio nuevo
+    const guia = { activo: false, idx: 0, sig: null, pantalla: 'serie', peso: '', reps: '', rir: '2', guardando: false };
+    function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function sigPendiente(desde) {
+      const l = ejs();
+      for (let k = 1; k <= l.length; k++) { const j = (desde + k) % l.length; if (!ejHecho(l[j])) return j; }
+      return null;
+    }
+    function guiaSugerencia(ej) {
+      const s = appState.ses, id = ej.id_ejercicio;
+      const hechas = ejHechas(id), nSerie = hechas.length + 1;
+      const ref = s.ref[id], bor = s.borrador[id] || {};
+      const refSerie = ref && ref.filas.length ? (ref.filas.find(r => Number(r.numero_serie) === nSerie) || ref.filas[ref.filas.length - 1]) : null;
+      const ult = hechas.length ? hechas[hechas.length - 1] : null;
+      let peso = bor.peso !== undefined ? bor.peso : (ult ? ult.peso_kg : (refSerie ? refSerie.peso_kg : ''));
+      let reps = bor.reps !== undefined ? bor.reps : (ult ? ult.repeticiones : (refSerie ? refSerie.repeticiones : (ej.reps_min || '')));
+      if (esTiempo(ej)) reps = ej.trabajo_seg;
+      return { peso: String(peso), reps: String(reps), rir: String(bor.rir !== undefined ? bor.rir : '2') };
+    }
+    function guiaCargarValores() {
+      const ej = ejs()[guia.idx];
+      if (!ej) return;
+      const v = guiaSugerencia(ej);
+      guia.peso = v.peso; guia.reps = v.reps; guia.rir = v.rir;
+    }
+    function guiaComenzar() {
+      const l = ejs();
+      if (!l.length) { avisoRapido('Hoy no hay ejercicios programados'); return; }
+      prepararAudio();
+      appState.sesionActiva = true;
+      pedirWakeLock();
+      guia.activo = true;
+      const enCurso = planFases && ['descanso', 'prep', 'trabajo'].indexOf(guia.pantalla) >= 0;
+      if (!enCurso) {
+        const s = appState.ses;
+        let i = (s.abierto !== null && s.abierto !== undefined && l[s.abierto] && !ejHecho(l[s.abierto])) ? s.abierto : primerPendiente();
+        if (i === null) { guia.pantalla = 'fin'; }
+        else { guia.idx = i; guia.pantalla = 'serie'; guiaCargarValores(); }
+      }
+      document.getElementById('guia-overlay').classList.remove('hidden');
+      document.body.classList.add('overflow-hidden');
+      guiaPintarVoz();
+      guiaRender(true);
+    }
+    function guiaSalir() {
+      guia.activo = false;
+      document.getElementById('guia-overlay').classList.add('hidden');
+      document.body.classList.remove('overflow-hidden');
+      renderTodas();
+    }
+    function guiaPintarVoz() {
+      const b = document.getElementById('guia-btn-voz');
+      if (b) b.textContent = modoSonido === 'voz' ? '🗣️' : (modoSonido === 'pitidos' ? '🔔' : '🔇');
+    }
+    function guiaCabecera() {
+      const l = ejs();
+      let tot = 0, hechasTot = 0;
+      l.forEach(ej => { tot += ejObjetivo(ej); hechasTot += Math.min(ejHechas(ej.id_ejercicio).length, ejObjetivo(ej)); });
+      const c = document.getElementById('guia-cab');
+      const idxVer = (guia.pantalla === 'descanso' && guia.sig !== null) ? guia.idx : guia.idx;
+      if (c) c.textContent = guia.pantalla === 'fin' ? 'Sesión terminada' : `Ejercicio ${idxVer + 1} de ${l.length} · ${hechasTot}/${tot} series`;
+      const pg = document.getElementById('guia-prog');
+      if (pg) pg.style.width = (tot ? Math.round(hechasTot / tot * 100) : 0) + '%';
+    }
+    function guiaGif(ej, tam) {
+      return ej && ej.gif_url ? `<img src="${esc(ej.gif_url)}" alt="" referrerpolicy="no-referrer" class="${tam} mx-auto rounded-2xl bg-white object-contain">` : '';
+    }
+    function guiaRender(animar) {
+      if (!guia.activo) return;
+      guiaCabecera();
+      const cont = document.getElementById('guia-contenido');
+      if (!cont) return;
+      const l = ejs();
+      const ej = l[guia.idx];
+      let h = '';
+      if (guia.pantalla === 'fin' || !ej) {
+        h = `<div class="text-center space-y-5 pt-10">
+          <div class="text-7xl">🎉</div>
+          <div class="text-3xl font-black">¡Sesión completa!</div>
+          <p class="text-slate-400 text-sm">Todas las series quedaron guardadas. Buen trabajo, JP.</p>
+          <button type="button" onclick="guiaSalir()" class="w-full py-5 rounded-2xl bg-emerald-600 text-lg font-black">Cerrar</button>
+        </div>`;
+      } else if (guia.pantalla === 'serie') {
+        const obj = ejObjetivo(ej), hechas = ejHechas(ej.id_ejercicio);
+        const nSerie = Math.min(hechas.length + 1, obj);
+        const extra = hechas.length >= obj;
+        const ref = appState.ses.ref[ej.id_ejercicio];
+        const refTxt = ref && ref.filas.length ? ref.filas.map(r => `${r.peso_kg}×${r.repeticiones}`).join(' · ') : 'Primera vez: elige un peso cómodo';
+        const objetivo = esTiempo(ej) ? `${ej.trabajo_seg} s de trabajo` : `${ej.reps_min}–${ej.reps_max} reps · RIR ${esc(ej.rir_objetivo || '2-3')}`;
+        const chips = hechas.map((r, i) => `<span class="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">✓ S${i + 1}: ${r.peso_kg}×${r.repeticiones}</span>`).join('');
+        const rirBtn = v => `<button type="button" onclick="guia.rir='${v}'; guiaRender(false)" class="flex-1 py-3 rounded-xl text-base font-bold ${guia.rir === v ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}">${v === '3' ? '3+' : v}</button>`;
+        h = `<div class="space-y-4">
+          <div class="text-center">
+            <div class="text-[11px] font-bold uppercase tracking-widest text-blue-400">${esc(ej.grupo_muscular)} · ${esc(ej.tipo_carga)}</div>
+            <div class="text-2xl font-black leading-tight mt-1">${esc(ej.nombre)}</div>
+          </div>
+          ${guiaGif(ej, 'w-44 h-44')}
+          <div class="flex items-center justify-center gap-2">
+            <span class="px-4 py-2 rounded-2xl bg-blue-600/20 border border-blue-500/40 text-blue-200 text-lg font-black">${extra ? 'Serie extra' : `Serie ${nSerie} de ${obj}`}</span>
+          </div>
+          <div class="text-center text-sm text-slate-300">🎯 ${objetivo} · descanso ${Number(ej.descanso_seg) || 90}s</div>
+          <div class="text-xs p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-center"><span class="text-slate-400">La vez pasada:</span> <span class="text-emerald-400 font-semibold">${esc(refTxt)}</span></div>
+          ${pistaHtml(ej, ref)}
+          ${chips ? `<div class="flex flex-wrap justify-center gap-1.5">${chips}</div>` : ''}
+          ${ej.notas_tecnica ? `<p class="text-xs text-slate-400 text-center">💡 ${esc(ej.notas_tecnica)}</p>` : ''}
+          <div class="space-y-3 bg-slate-900/70 rounded-2xl p-3 border border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="w-14 text-xs text-slate-400">Peso kg</span>
+              <button type="button" onclick="guiaSumar('peso',-2.5)" class="w-14 h-12 rounded-xl bg-slate-800 text-lg font-bold">−2,5</button>
+              <input type="number" step="0.5" inputmode="decimal" value="${esc(guia.peso)}" oninput="guia.peso=this.value" class="flex-1 min-w-0 h-12 text-center rounded-xl bg-slate-950 border border-slate-700 text-2xl font-black text-white">
+              <button type="button" onclick="guiaSumar('peso',2.5)" class="w-14 h-12 rounded-xl bg-slate-800 text-lg font-bold">+2,5</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-14 text-xs text-slate-400">${esTiempo(ej) ? 'Seg.' : 'Reps'}</span>
+              <button type="button" onclick="guiaSumar('reps',-1)" class="w-14 h-12 rounded-xl bg-slate-800 text-2xl font-bold">−</button>
+              <input type="number" inputmode="numeric" value="${esc(guia.reps)}" oninput="guia.reps=this.value" class="flex-1 min-w-0 h-12 text-center rounded-xl bg-slate-950 border border-slate-700 text-2xl font-black text-white">
+              <button type="button" onclick="guiaSumar('reps',1)" class="w-14 h-12 rounded-xl bg-slate-800 text-2xl font-bold">+</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-14 text-xs text-slate-400">RIR</span>
+              ${rirBtn('0')}${rirBtn('1')}${rirBtn('2')}${rirBtn('3')}
+            </div>
+          </div>
+          ${esTiempo(ej) ? `<button type="button" onclick="guiaTrabajoTiempo()" class="w-full py-4 rounded-2xl bg-amber-600 text-base font-black">⏱️ Empezar ${ej.trabajo_seg} s (con 5 s para prepararte)</button>` : ''}
+          <button type="button" id="guia-btn-ok" onclick="guiaTerminarSerie()" class="w-full py-5 rounded-2xl bg-blue-600 active:bg-blue-500 text-xl font-black shadow-lg shadow-blue-600/30">${guia.guardando ? 'Guardando…' : '✓ Terminé la serie'}</button>
+          <div class="flex gap-2">
+            <button type="button" onclick="guiaSaltarEjercicio()" class="flex-1 py-3 rounded-xl bg-slate-800 text-sm text-slate-200">⏭ Saltar ejercicio</button>
+            ${ej.video_url ? `<a href="${esc(ej.video_url)}" target="_blank" rel="noopener" class="flex-1 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300 text-center">▶ Ver técnica</a>` : ''}
+          </div>
+        </div>`;
+      } else {
+        // descanso / prep / trabajo: cronómetro grande
+        const esPrep = guia.pantalla === 'prep', esTrab = guia.pantalla === 'trabajo';
+        const color = esTrab ? 'text-emerald-400' : (esPrep ? 'text-amber-400' : 'text-blue-400');
+        const barra = esTrab ? 'bg-emerald-500' : (esPrep ? 'bg-amber-500' : 'bg-blue-500');
+        const titulo = esTrab ? 'TRABAJO' : (esPrep ? 'PREPÁRATE' : 'DESCANSO');
+        let info = '';
+        if (guia.pantalla === 'descanso') {
+          const sig = l[guia.sig];
+          if (sig && guia.sig === guia.idx) {
+            const n = Math.min(ejHechas(sig.id_ejercicio).length + 1, ejObjetivo(sig));
+            info = `<div class="text-xs uppercase tracking-widest text-slate-400">Siguiente</div>
+              <div class="text-lg font-bold">Serie ${n} de ${ejObjetivo(sig)} · ${esc(sig.nombre)}</div>`;
+          } else if (sig) {
+            const v = guiaSugerencia(sig);
+            info = `<div class="text-xs uppercase tracking-widest text-slate-400">Siguiente ejercicio</div>
+              <div class="text-xl font-black">${esc(sig.nombre)}</div>
+              ${guiaGif(sig, 'w-28 h-28')}
+              <div class="text-sm text-slate-300">${ejObjetivo(sig)} series${v.peso !== '' ? ` · sugerido ${esc(v.peso)} kg` : ''}</div>
+              <div class="text-xs text-amber-300">Al terminar el descanso tendrás ${GUIA_PREP_SEG} s para ir a la máquina o tomar las mancuernas</div>`;
+          }
+        } else if (esPrep) {
+          const v = guiaSugerencia(ej);
+          info = `<div class="text-2xl font-black">${esc(ej.nombre)}</div>
+            ${guiaGif(ej, 'w-40 h-40')}
+            <div class="text-sm text-slate-300">${esc(ej.grupo_muscular)} · ${esc(ej.tipo_carga)}${v.peso !== '' ? ` · sugerido ${esc(v.peso)} kg` : ''}</div>`;
+        } else {
+          info = `<div class="text-2xl font-black">${esc(ej.nombre)}</div>`;
+        }
+        h = `<div class="text-center space-y-5 pt-4">
+          <div class="text-sm font-black tracking-[0.3em] ${color}">${titulo}</div>
+          <div id="guia-reloj" class="guia-reloj text-[6.5rem] leading-none font-black ${color}">--:--</div>
+          <div class="h-3 rounded-full bg-slate-800 overflow-hidden"><div id="guia-barra" class="h-full ${barra}" style="width:100%;transition:width .25s linear"></div></div>
+          <div class="space-y-2">${info}</div>
+          <div class="flex gap-2 pt-2">
+            ${guia.pantalla === 'descanso' ? `<button type="button" onclick="guiaMoverFase(30000)" class="flex-1 py-4 rounded-2xl bg-slate-800 text-base font-bold">+30 s</button>` : ''}
+            <button type="button" onclick="guiaMoverFase(-1)" class="flex-1 py-4 rounded-2xl ${esPrep ? 'bg-amber-600' : (esTrab ? 'bg-emerald-700' : 'bg-blue-600')} text-base font-black">${esPrep ? 'Estoy listo ▶' : (esTrab ? 'Terminar ya' : 'Saltar descanso ⏭')}</button>
+          </div>
+        </div>`;
+      }
+      cont.innerHTML = h;
+      if (animar) { cont.classList.remove('guia-slide'); void cont.offsetWidth; cont.classList.add('guia-slide'); }
+      const pl = planFases;
+      if (pl && pl.actual >= 0 && ['descanso', 'prep', 'trabajo'].indexOf(guia.pantalla) >= 0) {
+        const f = pl.fases[pl.actual];
+        guiaPintarReloj(f, Math.max(0, Math.ceil((f.fin - Date.now()) / 1000)));
+      }
+    }
+    function guiaPintarReloj(fase, rem) {
+      if (!guia.activo) return;
+      const r = document.getElementById('guia-reloj');
+      if (r) r.textContent = String(Math.floor(rem / 60)).padStart(2, '0') + ':' + String(rem % 60).padStart(2, '0');
+      const b = document.getElementById('guia-barra');
+      if (b && fase && fase.seconds) b.style.width = Math.max(0, Math.min(100, rem / fase.seconds * 100)) + '%';
+    }
+    function guiaSumar(campo, d) {
+      const v = parseFloat(String(guia[campo]).replace(',', '.'));
+      let n = (isFinite(v) ? v : 0) + d;
+      if (n < 0) n = 0;
+      guia[campo] = String(Math.round(n * 10) / 10);
+      guiaRender(false);
+    }
+    function guiaSaltarEjercicio() {
+      const n = sigPendiente(guia.idx);
+      if (n === null || n === guia.idx) { avisoRapido('No hay otro ejercicio pendiente'); return; }
+      guia.idx = n;
+      guiaCargarValores();
+      guiaRender(true);
+    }
+    // Mueve el final de la fase actual: delta>0 suma tiempo; -1 = saltar al final de la fase
+    function guiaMoverFase(delta) {
+      const pl = planFases;
+      if (!pl) return;
+      const i = Math.max(0, pl.actual);
+      const f = pl.fases[i];
+      const now = Date.now();
+      let d = delta < 0 ? (now - f.fin) : delta;
+      for (let j = i; j < pl.fases.length; j++) { if (j > i) pl.fases[j].ini += d; pl.fases[j].fin += d; }
+      pl.fin += d;
+      pl.ultimoRem = -1;
+      tickFases();
+    }
+    function guiaTerminarSerie() {
+      if (guia.guardando) return;
+      const ej = ejs()[guia.idx];
+      if (!ej) return;
+      if (String(guia.peso).trim() === '' || String(guia.reps).trim() === '') { avisoRapido('Pon el peso y las repeticiones'); return; }
+      prepararAudio();
+      guia.guardando = true;
+      guiaRender(false);
+      const idxActual = guia.idx;
+      registrarSerie(idxActual, { peso: String(guia.peso).replace(',', '.'), reps: guia.reps, rir: guia.rir }, (ok, info) => {
+        guia.guardando = false;
+        if (!ok) { guiaRender(false); return; }
+        if (info.sesionCompleta) {
+          stopTimer();
+          guia.pantalla = 'fin';
+          hablar('Sesión completa. Buen trabajo');
+          guiaRender(true);
+          return;
+        }
+        const sig = info.completo ? sigPendiente(idxActual) : idxActual;
+        guiaDescanso(idxActual, sig === null ? idxActual : sig);
+      });
+    }
+    function guiaDescanso(idxActual, sig) {
+      const ej = ejs()[idxActual];
+      const sigEj = ejs()[sig];
+      const seg = Number(ej && ej.descanso_seg) > 0 ? Number(ej.descanso_seg) : 90;
+      const cambia = sig !== idxActual;
+      guia.sig = sig;
+      guia.pantalla = 'descanso';
+      const fases = [{ label: 'Descanso', voz: 'Descanso', seconds: seg, tipo: 'descanso' }];
+      if (cambia) fases.push({ label: 'Prepárate: ' + (sigEj ? sigEj.nombre : ''), voz: 'Prepárate', seconds: GUIA_PREP_SEG, tipo: 'prep' });
+      guiaRender(true);
+      ejecutarFases(fases, {
+        vozFin: cambia ? 'Empezamos' : 'Descanso terminado. Siguiente serie',
+        alCambiar: (f) => {
+          if (f.tipo === 'prep') { guia.idx = sig; guia.pantalla = 'prep'; guiaCargarValores(); guiaRender(true); }
+        },
+        alTerminar: () => {
+          guia.idx = sig; guia.pantalla = 'serie'; guiaCargarValores(); guiaRender(true);
+        }
+      });
+    }
+    function guiaTrabajoTiempo() {
+      const ej = ejs()[guia.idx];
+      if (!ej || !esTiempo(ej)) return;
+      const t = Number(ej.trabajo_seg);
+      const idx = guia.idx;
+      guia.pantalla = 'prep';
+      guiaRender(true);
+      ejecutarFases([
+        { label: 'Prepárate: ' + ej.nombre, voz: 'Prepárate', seconds: 5, tipo: 'prep' },
+        { label: 'TRABAJO', voz: 'Trabajo', seconds: t, tipo: 'trabajo' }
+      ], {
+        vozFin: 'Terminamos',
+        alCambiar: (f) => { if (f.tipo === 'trabajo') { guia.pantalla = 'trabajo'; guiaRender(true); } },
+        alTerminar: () => { guia.idx = idx; guia.reps = String(t); guia.pantalla = 'serie'; guiaRender(true); avisoRapido('Registra la serie con ✓'); }
+      });
     }
 
     function startTimer(seconds) {
@@ -2063,5 +2364,21 @@
       });
     }
   </script>
+  <!-- MODO ENTRENAMIENTO GUIADO (pantalla completa) -->
+  <div id="guia-overlay" class="hidden fixed inset-0 z-50 bg-slate-950 text-white flex flex-col" style="padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)">
+    <div class="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-800">
+      <div class="min-w-0">
+        <div id="guia-cab" class="text-[11px] text-slate-400 font-semibold truncate">Ejercicio 1/1</div>
+        <div class="h-1.5 w-40 rounded-full bg-slate-800 overflow-hidden mt-1"><div id="guia-prog" class="h-full bg-emerald-500" style="width:0%"></div></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" id="guia-btn-voz" onclick="toggleVoz(); guiaPintarVoz()" class="px-3 py-2 rounded-xl bg-slate-800 text-base">🔔</button>
+        <button type="button" onclick="guiaSalir()" class="px-3 py-2 rounded-xl bg-slate-800 text-sm font-semibold text-slate-200">✕ Salir</button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
+      <div id="guia-contenido" class="max-w-md mx-auto"></div>
+    </div>
+  </div>
 </body>
 </html>
