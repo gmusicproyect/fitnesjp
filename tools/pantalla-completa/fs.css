@@ -1,0 +1,38 @@
+/* ===== Pantalla completa de entrenamiento (fs) ===== */
+#fs{position:fixed;inset:0;z-index:80;background:var(--bg);color:var(--text);display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#fs.hidden{display:none}
+body.fs-on{overflow:hidden}body.fs-on #toast{z-index:9999}
+.fs-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.fs-top .fs-cab{font-size:12px;color:var(--muted);font-weight:700}
+.fs-prog{height:6px;width:150px;border-radius:9px;background:var(--raised);overflow:hidden;margin-top:6px}.fs-prog span{display:block;height:100%;background:var(--lime)}
+.fs-x{background:var(--raised);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:700;font-size:14px}
+.fs-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px}
+.fs-in{max-width:520px;margin:0 auto}
+@keyframes fsSlide{from{transform:translateX(55%);opacity:0}to{transform:none;opacity:1}}
+.fs-slide{animation:fsSlide .35s ease-out}
+.fs-c{text-align:center}.fs-muted{color:var(--muted)}.fs-small{font-size:12px}
+.fs-lbl{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--lime)}
+.fs-name{font-size:26px;font-weight:900;line-height:1.1;margin:6px 0 10px}
+.fs-gif{display:block;width:190px;height:190px;object-fit:contain;margin:6px auto 12px;border-radius:18px;background:#fff}
+.fs-gif.sm{width:120px;height:120px}
+.fs-pill{display:inline-block;padding:9px 18px;border-radius:999px;background:var(--raised);border:1px solid var(--lime);color:var(--lime);font-weight:900;font-size:18px}
+.fs-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;margin:12px 0}
+.fs-row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.fs-row .k{width:58px;font-size:12px;color:var(--muted)}
+.fs-row button{min-width:58px;height:52px;border-radius:12px;background:var(--raised);color:var(--text);border:1px solid var(--line);font-size:18px;font-weight:800}
+.fs-row input{flex:1;min-width:0;height:52px;border-radius:12px;background:var(--bg);color:var(--text);border:1px solid var(--line);text-align:center;font-size:26px;font-weight:900}
+.fs-rir{flex:1;height:48px!important;font-size:17px!important}.fs-rir.on{background:var(--lime)!important;color:var(--ink)!important}
+.fs-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px 0}
+.fs-chip{padding:5px 10px;border-radius:10px;background:var(--raised);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--lime)}
+.fs-big{display:block;width:100%;min-height:64px;border:0;border-radius:18px;background:var(--lime);color:var(--ink);font-size:21px;font-weight:900;margin:12px 0}
+.fs-big:disabled{opacity:.6}
+.fs-sec{display:block;width:100%;min-height:50px;border-radius:14px;background:var(--raised);color:var(--text);border:1px solid var(--line);font-size:15px;font-weight:700;margin:8px 0}
+.fs-two{display:flex;gap:8px}.fs-two>*{flex:1}
+.fs-clock{font-size:104px;line-height:1;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.03em;margin:14px 0}
+.fs-clock.rest{color:var(--blue)}.fs-clock.prep{color:var(--amber)}
+.fs-bar{height:12px;border-radius:9px;background:var(--raised);overflow:hidden}.fs-bar span{display:block;height:100%;background:var(--blue);transition:width .25s linear}.fs-bar.prep span{background:var(--amber)}
+.fs-opt{display:block;width:100%;text-align:left;padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--text);margin:6px 0}
+.fs-opt strong{display:block;font-size:15px}.fs-opt small{color:var(--muted)}
+.fs-change{display:block;width:100%;min-height:50px;border-radius:14px;background:transparent;border:1px solid var(--amber);color:var(--amber);font-weight:800;font-size:15px;margin-top:12px}
+.fs-input{width:100%;height:48px;border-radius:12px;background:var(--bg);border:1px solid var(--line);color:var(--text);padding:0 12px;font-size:15px}
+.fs-start{display:block;width:100%;min-height:62px;border:0;border-radius:18px;background:var(--lime);color:var(--ink);font-size:19px;font-weight:900;margin:4px 0 16px}
